@@ -1244,7 +1244,8 @@ const photoDB = {
 const photoUrls = new Map();
 async function photoUrl(id) {
   if (!photoUrls.has(id)) {
-    const blob = await photoDB.get(id).catch(() => null);
+    // Not on this device yet (e.g. added on another phone): fetch it from the account if signed in.
+    const blob = (await photoDB.get(id).catch(() => null)) || (await window.Sync?.fetchPhoto(id));
     if (!blob) return "";
     photoUrls.set(id, URL.createObjectURL(blob));
   }

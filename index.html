@@ -25,9 +25,12 @@
     </div>
     <div class="top-actions">
       <button class="btn primary small install-btn" id="installBtn" hidden>⬇ Install app</button>
+      <button class="theme-toggle account-btn" id="accountBtn" aria-label="Account" hidden>👤</button>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">🌙</button>
     </div>
   </header>
+
+  <button class="sync-refresh" id="syncRefresh" hidden>🔄 New updates from your other device. Tap to refresh.</button>
 
   <main id="app">
     <!-- HOME -->
@@ -52,6 +55,14 @@
       </div>
 
       <button class="card due-banner" id="dueBanner" hidden></button>
+
+      <div class="card signin-banner" id="signinBanner" hidden>
+        <span>☁️ <b>Use Gentle Gut on all your devices.</b> Sign in to back up your data and sync it everywhere.</span>
+        <div class="banner-actions">
+          <button class="btn primary small" id="bannerSignin">Sign in</button>
+          <button class="link-btn" id="bannerDismiss">Not now</button>
+        </div>
+      </div>
 
       <button class="tile tile-meal" data-go="meal">
         <span class="tile-icon">🍽️</span>
@@ -395,8 +406,65 @@
     </div>
   </dialog>
 
+  <dialog class="checkin account-dialog" id="accountDialog" aria-labelledby="accountTitle">
+    <button class="dialog-x" id="accountClose" aria-label="Close">✕</button>
+
+    <form class="acct-pane" id="acctSignin" data-pane="signin">
+      <h2 id="accountTitle">Sign in 🌿</h2>
+      <p class="muted">Sign in to sync your meals, journal and cookie jar across all your devices.</p>
+      <label class="field"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>
+      <label class="field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required minlength="8"></label>
+      <p class="acct-msg" aria-live="polite"></p>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="acct-links">
+        <button type="button" class="link-btn" data-show="signup">Create an account</button>
+        <button type="button" class="link-btn" data-show="forgot">Forgot password?</button>
+      </p>
+    </form>
+
+    <form class="acct-pane" id="acctSignup" data-pane="signup" hidden>
+      <h2>Create your account</h2>
+      <p class="muted">Anything already saved on this device comes with you.</p>
+      <label class="field"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>
+      <label class="field"><span>Password (8+ characters)</span><input type="password" name="password" autocomplete="new-password" required minlength="8"></label>
+      <p class="acct-msg" aria-live="polite"></p>
+      <button class="btn primary" type="submit">Create account</button>
+      <p class="acct-links"><button type="button" class="link-btn" data-show="signin">I already have an account</button></p>
+    </form>
+
+    <form class="acct-pane" id="acctForgot" data-pane="forgot" hidden>
+      <h2>Reset your password</h2>
+      <p class="muted">We'll email you a link to choose a new password.</p>
+      <label class="field"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>
+      <p class="acct-msg" aria-live="polite"></p>
+      <button class="btn primary" type="submit">Send reset link</button>
+      <p class="acct-links"><button type="button" class="link-btn" data-show="signin">Back to sign in</button></p>
+    </form>
+
+    <form class="acct-pane" id="acctRecovery" data-pane="recovery" hidden>
+      <h2>Choose a new password</h2>
+      <label class="field"><span>New password (8+ characters)</span><input type="password" name="password" autocomplete="new-password" required minlength="8"></label>
+      <p class="acct-msg" aria-live="polite"></p>
+      <button class="btn primary" type="submit">Save password</button>
+    </form>
+
+    <div class="acct-pane" data-pane="account" hidden>
+      <h2>Your account</h2>
+      <p class="acct-email" id="acctEmail"></p>
+      <div class="sync-status card soft">
+        <span id="syncStatus">Checking…</span>
+        <button class="btn ghost small" id="syncNow">Sync now</button>
+      </div>
+      <p class="muted small">Your meals, logs, journal and cookie jar sync automatically whenever you're online. Only you can see them.</p>
+      <button class="btn ghost" id="signOutBtn">Sign out</button>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="config.js"></script>
   <script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="sync.js"></script>
 </body>
 </html>

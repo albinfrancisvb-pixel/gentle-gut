@@ -1,11 +1,13 @@
 // Gentle Gut service worker: makes the app work offline and shows check-in notifications.
 // Bump VERSION whenever app files change so installed copies pick up the update.
-const VERSION = "gentle-gut-v4";
+const VERSION = "gentle-gut-v5";
 const APP_FILES = [
   "./",
   "index.html",
   "styles.css",
+  "config.js",
   "app.js",
+  "sync.js",
   "manifest.webmanifest",
   "icons/icon.svg",
   "icons/icon-192.png",
@@ -32,7 +34,8 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  const isFont = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
+  // Fonts and the pinned Supabase library never change, so they are cached on first use.
+  const isFont = ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net"].includes(url.hostname);
   if (url.origin !== location.origin && !isFont) return;
 
   if (isFont) {

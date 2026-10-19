@@ -461,3 +461,28 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 
 /* Seven nav items need to fit on small phones */
 .bottom-nav button { font-size: .7rem; min-width: 0; }
+
+/* Account & sync */
+.account-btn.signed-in { border-color: var(--primary); }
+.signin-banner { display: flex; flex-direction: column; gap: 10px; background: var(--breathe); border-color: transparent; }
+.signin-banner[hidden] { display: none; }
+.banner-actions { display: flex; gap: 14px; align-items: center; }
+.banner-actions .btn { width: auto; }
+.sync-refresh {
+  display: block; width: calc(100% - 32px); max-width: 608px; margin: 0 auto 12px; padding: 10px 14px;
+  border: none; border-radius: 14px; background: var(--primary); color: var(--primary-ink); font-weight: 700;
+}
+.sync-refresh[hidden] { display: none; }
+.account-dialog { position: relative; }
+.acct-pane[hidden] { display: none; }
+.dialog-x { position: absolute; top: 12px; right: 12px; border: none; background: none; font-size: 1.1rem; color: var(--muted); }
+.account-dialog input[type="email"], .account-dialog input[type="password"] {
+  width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2);
+}
+.acct-msg { min-height: 1.2em; margin: 0 0 10px; font-size: .9rem; }
+.acct-msg.error { color: var(--high); }
+.acct-msg.ok { color: var(--low); }
+.acct-links { display: flex; justify-content: space-between; gap: 10px; margin: 14px 0 0; }
+.acct-email { font-weight: 700; margin: 0 0 12px; overflow-wrap: anywhere; }
+.sync-status { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sync-status .btn { width: auto; flex: none; }
