@@ -26,6 +26,25 @@ function toast(msg) {
   toast._t = setTimeout(() => t.classList.remove("show"), 2200);
 }
 
+// In-app "Are you sure?" pop-up. The browser's confirm() is blocked in some app views (it silently
+// answers "no"), so this one is used everywhere instead. Resolves true/false.
+function askConfirm(text, okLabel = "OK") {
+  const d = $("#confirmDialog");
+  $("#confirmText").textContent = text;
+  $("#confirmYes").textContent = okLabel;
+  d.showModal();
+  return new Promise((resolve) => {
+    const done = (answer) => {
+      d.close();
+      $("#confirmYes").onclick = $("#confirmNo").onclick = d.oncancel = null;
+      resolve(answer);
+    };
+    $("#confirmYes").onclick = () => done(true);
+    $("#confirmNo").onclick = () => done(false);
+    d.oncancel = (e) => { e.preventDefault(); done(false); };
+  });
+}
+
 /* ---------- Theme ---------- */
 const themeBtn = $("#themeToggle");
 function applyTheme(theme) {
@@ -1190,9 +1209,9 @@ function renderJournal() {
       </details></li>`).join("")
     : `<li class="muted">Nothing here yet. Your chats and writing will appear here.</li>`;
 }
-$("#journalList").addEventListener("click", (e) => {
+$("#journalList").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-jdel]");
-  if (!b || !confirm("Delete this journal entry?")) return;
+  if (!b || !(await askConfirm("Delete this journal entry?", "Delete"))) return;
   journal = journal.filter((s) => String(s.id) !== b.dataset.jdel);
   store.set("journal", journal);
   renderJournal();
@@ -1420,7 +1439,7 @@ $("#cookieList").addEventListener("click", async (e) => {
   const t = e.target;
   if (t.dataset.edit) return openCookieForm(find(t.dataset.edit));
   if (t.dataset.open) return openBoost(Number(t.dataset.open));
-  if (t.dataset.del && confirm("Remove this cookie from your jar?")) {
+  if (t.dataset.del && (await askConfirm("Remove this cookie from your jar?", "Remove"))) {
     const c = find(t.dataset.del);
     for (const id of c.photoIds) {
       await photoDB.del(id).catch(() => {});

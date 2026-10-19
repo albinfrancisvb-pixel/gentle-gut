@@ -1,6 +1,6 @@
 // Gentle Gut service worker: makes the app work offline and shows check-in notifications.
 // Bump VERSION whenever app files change so installed copies pick up the update.
-const VERSION = "gentle-gut-v5";
+const VERSION = "gentle-gut-v7";
 const APP_FILES = [
   "./",
   "index.html",
@@ -17,7 +17,9 @@ const APP_FILES = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
+  // cache: "reload" skips the browser's HTTP cache, so the offline copy is always the new version.
+  const requests = APP_FILES.map((u) => new Request(u, { cache: "reload" }));
+  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(requests)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -49,8 +51,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // "no-cache" makes the browser check the server for a newer copy instead of reusing its HTTP cache,
+  // so a fresh index.html is never paired with an old app.js after an update.
+  // (Page navigations can't take extra fetch options, so they're re-requested by URL.)
+  const fresh = req.mode === "navigate" ? fetch(req.url, { cache: "no-cache" }) : fetch(req, { cache: "no-cache" });
   event.respondWith(
-    fetch(req)
+    fresh
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

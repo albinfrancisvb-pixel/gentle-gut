@@ -255,7 +255,9 @@ if (typeof window !== "undefined") (() => {
     btn.disabled = true;
     try { await fn(); } catch (err) { msg(form, friendly(err)); } finally { btn.disabled = false; }
   }
-  const appUrl = location.origin + location.pathname;
+  // Links in sign-up and password-reset emails open the live app, even when testing on this PC
+  // (a localhost link can't open on a phone).
+  const appUrl = cfg.siteUrl || location.origin + location.pathname;
 
   $("#acctSignin").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -307,9 +309,9 @@ if (typeof window !== "undefined") (() => {
 
   // Signing out removes this person's data from the device (it stays safe in their account).
   $("#signOutBtn").addEventListener("click", async () => {
-    if (!confirm("Sign out? Your data stays safe in your account, and it will be removed from this device until you sign in again.")) return;
+    if (!(await askConfirm("Sign out? Your data stays safe in your account, and it will be removed from this device until you sign in again.", "Sign out"))) return;
     if (navigator.onLine) await syncNow();
-    if (status === "error" && !confirm("Your latest changes couldn't be synced and will be lost. Sign out anyway?")) return;
+    if (status === "error" && !(await askConfirm("Your latest changes couldn't be synced and will be lost. Sign out anyway?", "Sign out anyway"))) return;
     await client.auth.signOut();
     for (const c in COLLECTIONS) raw.del("gg:" + c);
     raw.del(META_KEY);

@@ -486,3 +486,5 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 .acct-email { font-weight: 700; margin: 0 0 12px; overflow-wrap: anywhere; }
 .sync-status { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .sync-status .btn { width: auto; flex: none; }
+
+.confirm-dialog p { margin: 0 0 16px; font-weight: 600; }
