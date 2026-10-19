@@ -314,3 +314,58 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 @media (display-mode: standalone) {
   .topbar { padding-top: calc(16px + env(safe-area-inset-top)); }
 }
+
+/* Journal & chat */
+.tile-journal { background: var(--breathe); }
+.jpane[hidden] { display: none; }
+.chat { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 12px; min-height: 240px; }
+.bubble {
+  max-width: 85%; padding: 10px 14px; border-radius: 18px; line-height: 1.45;
+  animation: pop .2s ease; overflow-wrap: anywhere;
+}
+@keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.bubble.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 6px; }
+.bubble.me { align-self: flex-end; background: var(--primary); color: var(--primary-ink); border-bottom-right-radius: 6px; white-space: pre-wrap; }
+.bubble blockquote { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--primary); background: var(--primary-soft); border-radius: 8px; font-style: italic; }
+.bubble .btn { margin-top: 8px; width: auto; }
+.bubble.typing { display: flex; gap: 4px; padding: 14px; }
+.bubble.typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+.bubble.typing span:nth-child(2) { animation-delay: .15s; }
+.bubble.typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.bubble.crisis { background: var(--warn-bg); border-color: var(--warn-border); max-width: 100%; }
+.bubble.crisis ul { margin: 6px 0 0; padding-left: 18px; }
+.bubble.crisis a { color: inherit; font-weight: 700; }
+
+.chat-controls { position: sticky; bottom: 76px; background: var(--bg); padding: 8px 0; }
+.chat-chips:empty { display: none; }
+.chat-chips .chip { background: var(--surface); }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; margin-top: 8px; }
+.chat-input[hidden] { display: none; }
+.chat-input textarea {
+  flex: 1; resize: none; max-height: 140px; padding: 12px 14px; border-radius: 18px;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.send-btn { width: 48px !important; height: 48px; padding: 0; border-radius: 50%; flex: none; }
+
+.mini-breath {
+  width: 46px; height: 46px; border-radius: 50%; margin: 4px auto 8px;
+  background: radial-gradient(circle at 35% 35%, var(--primary-soft), var(--primary));
+  transition: transform 4s ease-in-out;
+}
+
+.card.soft { background: var(--primary-soft); border-color: transparent; }
+.journal-list { list-style: none; padding: 0; margin: 0; }
+.journal-list > li {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 12px 14px; margin-bottom: 8px;
+}
+.journal-list summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.journal-list summary::-webkit-details-marker { display: none; }
+.journal-list .qa { margin: 10px 0 0; font-size: .92rem; }
+.journal-list .qa dt { color: var(--muted); font-size: .82rem; margin-top: 8px; }
+.journal-list .qa dd { margin: 2px 0 0; white-space: pre-wrap; }
+.shift { font-weight: 800; color: var(--low); white-space: nowrap; }
+.stat-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.stat { flex: 1; min-width: 90px; background: var(--surface-2); border-radius: 12px; padding: 10px; text-align: center; }
+.stat b { display: block; font-size: 1.3rem; }

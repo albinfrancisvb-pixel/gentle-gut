@@ -755,7 +755,451 @@ window.addEventListener("appinstalled", () => {
 // Home-screen shortcuts open straight to a tab (e.g. ./#meal).
 function openFromHash() {
   const view = location.hash.slice(1);
-  if (["home", "meal", "sos", "breathe", "food", "log"].includes(view)) go(view);
+  if (["home", "meal", "journal", "sos", "breathe", "food", "log"].includes(view)) go(view);
 }
 openFromHash();
 window.addEventListener("hashchange", openFromHash);
+
+/* ---------- Journal: guided "talk it out" chat ---------- */
+// A scripted, CBT-inspired companion. Runs fully on-device: no AI service, nothing is sent anywhere.
+
+const jMoods = [
+  { v: "anxious", e: "😟", label: "Anxious" },
+  { v: "stressed", e: "😣", label: "Stressed" },
+  { v: "sad", e: "😢", label: "Sad" },
+  { v: "angry", e: "😠", label: "Angry" },
+  { v: "overwhelmed", e: "😵‍💫", label: "Overwhelmed" },
+  { v: "okay", e: "🙂", label: "Okay" },
+  { v: "grateful", e: "🥰", label: "Grateful" },
+];
+const moodEmoji = Object.fromEntries(jMoods.map((m) => [m.v, m.e]));
+const positiveMoods = new Set(["okay", "grateful"]);
+const moodReply = {
+  anxious: "Anxiety can make your whole body feel on alert. You're safe right here, and we can slow things down together.",
+  stressed: "Stress is exhausting, and it often shows up in the gut too. Thank you for taking a moment for yourself.",
+  sad: "I'm sorry you're feeling low. You don't have to fix anything right now. Let's just look at it gently.",
+  angry: "Anger usually means something mattered to you. It's okay to feel it here.",
+  overwhelmed: "When everything piles up, it's hard to know where to start. We'll take it one small piece at a time.",
+  okay: "Okay is a good place to be. Writing on calmer days helps too.",
+  grateful: "That's lovely to hear. Let's make the most of that feeling.",
+};
+
+const crisisRe = /\b(kill(ing)? myself|suicid\w*|end (it all|my life)|want to die|wanna die|(don['’]?t|do not) want to (live|be here|exist)|self[- ]?harm|hurt(ing)? myself|cut(ting)? myself|no reason to live|better off (dead|without me))\b/i;
+
+const distortions = [
+  { re: /\b(i['’]?m|i am) (so |such |just |really |a |an )*(useless|stupid|failure|worthless|pathetic|weak|broken|burden|disgusting|idiot|hopeless|loser)\b/i,
+    name: "harsh self-labels",
+    tip: "You'd never call a friend that. A hard day, or a body that's struggling, doesn't define who you are." },
+  { re: /\b(ruin(ed|s)?|disaster|worst|terrible|can['’]?t (cope|handle|take)|falling apart|what if|everything is going wrong)\b/i,
+    name: "catastrophising",
+    tip: "Your mind may be jumping to the worst-case outcome. Worry is very good at predicting disasters that rarely happen." },
+  { re: /\b(always|never|every ?time|nothing ever|everyone|no ?one|nobody)\b/i,
+    name: "all-or-nothing thinking",
+    tip: "Words like “always” and “never” can make a hard moment feel permanent. Is it truly every time, or does it just feel that way right now?" },
+  { re: /\b(they|he|she|everyone|people|others) (think|thinks|must think|probably think|will think|hate|judge)\b/i,
+    name: "mind reading",
+    tip: "We can't really know what others think. Often they're far more caught up in their own lives than we imagine." },
+  { re: /\b(i )?(should(n['’]?t)?|must|have to|supposed to)\b/i,
+    name: "“should” statements",
+    tip: "“Should” can turn into a heavy rule. What if you swapped it for “I'd like to” or “it would be nice if”?" },
+];
+
+const themes = [
+  { re: /\b(stomach|tummy|gut|ibs|bloat\w*|cramp\w*|flare\w*|toilet|bathroom|diarr\w*|constipat\w*|nause\w*|pain|food|ate|eat\w*)\b/i,
+    reply: "Your gut and your mind are closely connected. Stress can make IBS symptoms worse, and symptoms can make you more stressed. It's a loop, not a weakness.",
+    action: { label: "Open flare-up help", go: "sos" } },
+  { re: /\b(work|job|boss|exam\w*|stud(y|ies|ying)|college|school|deadline\w*|office|assignment\w*|interview)\b/i,
+    reply: "Work and study pressure can pile up fast, especially when your body isn't feeling great." },
+  { re: /\b(friend\w*|family|mom|mum|dad|parents?|partner|boyfriend|girlfriend|husband|wife|relationship|alone|lonely)\b/i,
+    reply: "Things with people we care about can weigh heavily. It makes sense that this is on your mind." },
+  { re: /\b(sleep\w*|tired|exhausted|insomnia|awake|can['’]?t rest)\b/i,
+    reply: "Being tired makes everything feel heavier, including worries and gut symptoms." },
+  { re: /\b(money|rent|bills?|debt|loan|salary|afford)\b/i,
+    reply: "Money stress is real and draining. It can help to separate the parts you can act on from the parts you can't." },
+];
+
+const validations = [
+  "That sounds really hard. Thank you for putting it into words.",
+  "It makes sense that you feel this way.",
+  "Thank you for sharing that. Just writing it down can loosen its grip a little.",
+];
+
+const chatEl = $("#chat");
+const chatChips = $("#chatChips");
+const chatForm = $("#chatInputRow");
+const chatText = $("#chatText");
+const CANCELLED = Symbol("cancelled");
+let chatRun = 0;
+let chatStarted = false;
+let replyHandler = null;
+let lastBotText = "";
+let jSession = null;
+let journal = store.get("journal", []);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const scale = (from = 0) => Array.from({ length: 11 - from }, (_, i) => String(i + from));
+
+function bubble(cls, html) {
+  const d = document.createElement("div");
+  d.className = "bubble " + cls;
+  d.innerHTML = html;
+  chatEl.appendChild(d);
+  d.scrollIntoView({ behavior: "smooth", block: "end" });
+  return d;
+}
+
+// Bot message with a short "typing" pause so it feels like a conversation.
+async function say(html, delay) {
+  const run = chatRun;
+  const typing = bubble("bot typing", "<span></span><span></span><span></span>");
+  await sleep(delay ?? Math.min(1500, 400 + html.replace(/<[^>]+>/g, "").length * 10));
+  typing.remove();
+  if (run !== chatRun) throw CANCELLED;
+  lastBotText = html.replace(/<[^>]+>/g, "");
+  return bubble("bot", html);
+}
+
+// Waits for the person to tap a chip or type a reply. Chips: strings or {label, value}.
+function ask({ chips = [], text = false, placeholder = "Type here…" } = {}) {
+  const run = chatRun;
+  const question = lastBotText;
+  const opts = chips.map((c) => (typeof c === "string" ? { label: c, value: c } : c));
+  chatChips.innerHTML = opts.map((c, i) => `<button type="button" class="chip" data-i="${i}">${escapeHtml(c.label)}</button>`).join("");
+  chatForm.hidden = !text;
+  chatText.placeholder = placeholder;
+  chatText.value = "";
+  if (text) setTimeout(() => chatText.focus({ preventScroll: true }), 50);
+  return new Promise((resolve) => {
+    replyHandler = (value, label, typed) => {
+      if (run !== chatRun) return;
+      replyHandler = null;
+      chatChips.innerHTML = "";
+      chatForm.hidden = true;
+      bubble("me", escapeHtml(label));
+      if (typed) {
+        jSession.entries.push({ q: question, a: value });
+        saveJournal(jSession); // saved as they go, so closing the app mid-chat loses nothing
+        if (crisisRe.test(value)) showCrisis();
+      }
+      resolve(value);
+    };
+    chatChips.onclick = (e) => {
+      const b = e.target.closest("[data-i]");
+      if (b && replyHandler) replyHandler(opts[b.dataset.i].value, opts[b.dataset.i].label, false);
+    };
+  });
+}
+
+chatForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = chatText.value.trim();
+  if (v && replyHandler) replyHandler(v, v, true);
+});
+chatText.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatForm.requestSubmit(); }
+});
+chatText.addEventListener("input", () => {
+  chatText.style.height = "auto";
+  chatText.style.height = chatText.scrollHeight + "px";
+});
+
+// Shown once per chat, the moment anything suggests self-harm, without waiting for the script.
+function showCrisis() {
+  if (jSession.crisisShown) return;
+  jSession.crisisShown = true;
+  bubble("bot crisis", `
+    <strong>I'm really glad you told me. You deserve support from a real person right now.</strong>
+    <ul>
+      <li>If you might act on these thoughts, call your local emergency number (<a href="tel:112">112</a> in India and Europe, <a href="tel:911">911</a> in the US).</li>
+      <li>India: Tele-MANAS <a href="tel:14416">14416</a> (free, 24/7)</li>
+      <li>US: call or text <a href="tel:988">988</a></li>
+      <li>UK &amp; Ireland: Samaritans <a href="tel:116123">116 123</a></li>
+      <li>Anywhere else: <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a></li>
+    </ul>
+    <p>Reaching out to someone you trust right now is a strong thing to do. I'm still here if you want to keep writing.</p>`);
+}
+
+function goButton(label, view) {
+  return `<br><button class="btn ghost small" data-chat-go="${view}">${label}</button>`;
+}
+chatEl.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-chat-go]");
+  if (b) go(b.dataset.chatGo);
+});
+
+/* Conversation */
+async function runChat() {
+  chatRun++;
+  chatStarted = true;
+  replyHandler = null;
+  chatEl.innerHTML = "";
+  chatChips.innerHTML = "";
+  chatForm.hidden = true;
+  jSession = { id: Date.now(), start: Date.now(), type: "chat", mood: null, before: null, after: null, entries: [], tools: [], steps: [] };
+  try {
+    const h = new Date().getHours();
+    await say(`${h < 12 ? "Good morning" : h < 18 ? "Hi there" : "Good evening"} 🌿 This is your safe space. Nothing you write here leaves your phone.`);
+    await say("How are you feeling right now?");
+    jSession.mood = await ask({ chips: jMoods.map((m) => ({ label: `${m.e} ${m.label}`, value: m.v })) });
+    await say(moodReply[jSession.mood]);
+
+    if (positiveMoods.has(jSession.mood)) {
+      await gratitude();
+      await say("Is anything on your mind that you'd like to write about?");
+      const more = await ask({ chips: ["Yes, something's bugging me", "No, that's all"] });
+      if (more.startsWith("No")) return await finish();
+    }
+
+    await say("How strong is that feeling right now, from 0 (barely there) to 10 (overwhelming)?");
+    jSession.before = Number(await ask({ chips: scale() }));
+
+    await say("What's on your mind? Write as much or as little as you like.");
+    const text = await ask({ text: true, placeholder: "I'm feeling this way because…" });
+    await reflect(text);
+    await toolLoop();
+    await finish();
+  } catch (err) {
+    if (err !== CANCELLED) throw err;
+  }
+}
+
+async function reflect(text) {
+  const theme = themes.find((t) => t.re.test(text));
+  const distortion = distortions.find((d) => d.re.test(text));
+  await say(theme ? theme.reply : validations[text.length % validations.length]);
+  if (theme?.action) await say("If your stomach is hurting right now, the flare-up steps might help." + goButton(theme.action.label, theme.action.go));
+  if (distortion) {
+    jSession.distortion = distortion.name;
+    await say(`I noticed something in what you wrote that might be <b>${distortion.name}</b>. ${distortion.tip}`);
+  }
+}
+
+async function toolLoop() {
+  let first = true;
+  for (;;) {
+    await say(first ? "Would you like to try something that might help?" : "Would you like to try something else, or shall we wrap up?");
+    const tool = await ask({
+      chips: [
+        { label: "🔄 See the thought differently", value: "reframe" },
+        { label: "🫁 Calm my body", value: "breathe" },
+        { label: "🌍 Ground me in the moment", value: "ground" },
+        { label: "🎯 Can I control this?", value: "control" },
+        first ? { label: "💬 I just needed to vent", value: "vent" } : { label: "✅ Wrap up", value: "done" },
+      ],
+    });
+    if (tool === "vent") {
+      await say("Thank you for letting it out. Putting feelings into words moves them out of your head and onto the page, and that alone can lighten the load.");
+      return;
+    }
+    if (tool === "done") return;
+    jSession.tools.push(tool);
+    await tools[tool]();
+    first = false;
+  }
+}
+
+const tools = {
+  async reframe() {
+    await say("Let's look at the thought itself. In one sentence, what's the thought that's bothering you most?");
+    const thought = await ask({ text: true, placeholder: "e.g. I'll embarrass myself if my stomach acts up" });
+    await say("How much do you believe that thought right now, 0 to 10?");
+    const beliefBefore = Number(await ask({ chips: scale() }));
+    await say("What makes this thought feel true?");
+    await ask({ text: true, placeholder: "The evidence for it…" });
+    await say("Now, what doesn't fit? Is there anything that shows it might not be the whole story?");
+    const against = await ask({ text: true, chips: ["I can't think of anything"], placeholder: "The evidence against it…" });
+    if (against === "I can't think of anything") {
+      await say("That's okay, it's hard when we're upset. Has there ever been a time this didn't happen, or turned out better than you expected?");
+      await ask({ text: true, placeholder: "One time it went better…" });
+    }
+    await say("If your best friend told you they had this thought, what would you say to them?");
+    await ask({ text: true, placeholder: "I'd tell them…" });
+    await say("Now try writing a kinder, more balanced version of your original thought.");
+    const reframe = await ask({ text: true, placeholder: "A fairer way to see it is…" });
+    await say(`Here's your new thought. Come back to it whenever you need it:<blockquote>${escapeHtml(reframe)}</blockquote>`);
+    await say(`Looking at the original thought again (“${escapeHtml(thought)}”), how much do you believe it now, 0 to 10?`);
+    const beliefAfter = Number(await ask({ chips: scale() }));
+    jSession.reframe = { thought, reframe, beliefBefore, beliefAfter };
+    await say(beliefAfter < beliefBefore
+      ? `It went from ${beliefBefore} to ${beliefAfter}. That's your mind loosening its grip on that thought. Well done. 💚`
+      : "That's okay. Thoughts can be sticky, and practising this makes it easier each time. Just questioning a thought is a big step.");
+  },
+
+  async breathe() {
+    await say("Let's take three slow breaths together. Breathe into your belly, so it rises as you breathe in.");
+    const b = await say(`<div class="mini-breath" id="miniBreath"></div><span id="miniBreathText">Get comfortable…</span>`, 600);
+    const circle = b.querySelector(".mini-breath");
+    const label = b.querySelector("span");
+    const run = chatRun;
+    await sleep(1500);
+    for (let i = 1; i <= 3; i++) {
+      if (run !== chatRun) throw CANCELLED;
+      label.textContent = `Breathe in slowly… (${i} of 3)`;
+      circle.style.transitionDuration = "4s";
+      circle.style.transform = "scale(1.6)";
+      await sleep(4000);
+      label.textContent = "And breathe out gently…";
+      circle.style.transitionDuration = "6s";
+      circle.style.transform = "scale(1)";
+      await sleep(6000);
+    }
+    label.textContent = "Lovely. 🌿";
+    await say("How does your body feel now?");
+    const felt = await ask({ chips: ["A bit calmer", "About the same", "Still tense"] });
+    jSession.steps.push("Breathing: " + felt.toLowerCase());
+    await say(felt === "A bit calmer"
+      ? "I'm glad. Slow breathing tells your nervous system, and your gut, that you're safe."
+      : "That's okay. Sometimes it takes a few minutes. The Breathe screen has a longer guided session." + goButton("Open Breathe", "breathe"));
+  },
+
+  async ground() {
+    await say("Let's bring your attention back to right now with 5-4-3-2-1. You can type them, or just notice them and tap Done.");
+    const senses = [
+      "Name <b>5 things you can see</b> around you.",
+      "Now <b>4 things you can feel</b>: your feet on the floor, your clothes, the air…",
+      "<b>3 things you can hear</b>, near or far.",
+      "<b>2 things you can smell</b>, or two smells you like.",
+      "And <b>1 thing you can taste</b>, or one kind thing about yourself.",
+    ];
+    for (const s of senses) {
+      await say(s, 700);
+      await ask({ text: true, chips: ["Done ✓"], placeholder: "Type or tap Done" });
+    }
+    await say("Nicely done. You just brought your mind back to the present moment, where you're safe. Worries live in the future, and you're here now.");
+  },
+
+  async control() {
+    await say("Let's sort this worry. Is any part of it something you can actually do something about?");
+    const ans = await ask({ chips: ["Yes, some of it", "Not really", "I'm not sure"] });
+    if (ans === "Not really") {
+      await say("Then holding on tightly won't change it, but it will keep hurting you. Try this: picture writing the worry on a leaf and placing it on a stream. Watch it float away. You can always pick it back up later.");
+      const r = await ask({ chips: ["🍃 I let it float away", "It's still there"] });
+      await say(r.startsWith("🍃")
+        ? "Beautiful. Come back to that image whenever this worry returns."
+        : "That's okay. Worries often come back, and each time you can gently set them down again. It gets easier with practice.");
+      return;
+    }
+    await say(ans === "I'm not sure"
+      ? "Let's split it up. Which part could you influence, even a tiny bit?"
+      : "What's one tiny step you could take, something that would take 5 minutes or less?");
+    const step = await ask({ text: true, placeholder: "One small step…" });
+    jSession.steps.push("Next step: " + step);
+    await say("That's a great step. Small actions shrink big worries. For the parts you can't control, it's okay to let them be for now.");
+  },
+};
+
+async function gratitude() {
+  await say("Let's hold onto that. Name three small things that went okay today. They can be tiny, like a good cup of tea.");
+  const g = await ask({ text: true, placeholder: "1. … 2. … 3. …" });
+  jSession.gratitude = g;
+  await say("Lovely. Noticing good moments trains your brain to spot them more often, even on harder days.");
+}
+
+async function finish() {
+  if (jSession.before !== null) {
+    await say("Before we finish: how strong is that feeling now, 0 to 10?");
+    jSession.after = Number(await ask({ chips: scale() }));
+    const { before, after } = jSession;
+    await say(after < before
+      ? `That's a drop from <b>${before}</b> to <b>${after}</b>. You did that. 💚`
+      : after === before
+        ? "Feelings don't always shift right away, and that's okay. You showed up for yourself, and that counts."
+        : "Thank you for being honest. If things keep getting harder, please talk to someone you trust or a professional. You don't have to carry this alone.");
+  }
+  saveJournal(jSession);
+  await say(`I've saved this to your journal. ${affirmations[Math.floor(Math.random() * affirmations.length)]}`);
+  const again = await ask({ chips: ["💬 Talk again", "📖 See my journal"] });
+  if (again.includes("journal")) showJTab("history");
+  runChat();
+}
+
+function saveJournal(s) {
+  s.updated = Date.now();
+  journal = journal.filter((x) => x.id !== s.id).concat(s);
+  store.set("journal", journal);
+  renderJournal();
+}
+
+/* Free writing */
+let freeMood = null;
+$("#freeMoodChips").innerHTML = jMoods.map((m) => `<button type="button" class="chip" data-fmood="${m.v}">${m.e} ${m.label}</button>`).join("");
+$("#freeMoodChips").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fmood]");
+  if (!b) return;
+  freeMood = b.dataset.fmood;
+  $$("[data-fmood]").forEach((x) => x.classList.toggle("active", x === b));
+});
+$("#freeWriteForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("#freeText").value.trim();
+  if (!text) return toast("Write a few words first");
+  const s = { id: Date.now(), start: Date.now(), type: "free", mood: freeMood, entries: [{ q: "Free writing", a: text }] };
+  saveJournal(s);
+  const distortion = distortions.find((d) => d.re.test(text));
+  const theme = themes.find((t) => t.re.test(text));
+  const reply = $("#freeReply");
+  reply.hidden = false;
+  reply.innerHTML = crisisRe.test(text)
+    ? `<strong>Thank you for writing this down. You deserve support from a real person.</strong> If you might hurt yourself, please call your local emergency number, or in India Tele-MANAS <a href="tel:14416">14416</a>, in the US <a href="tel:988">988</a>, or find a helpline at <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.`
+    : `<strong>Saved 💚</strong> ${theme ? theme.reply : "Getting it out of your head and onto the page is a real step."}
+       ${distortion ? `<p>I noticed a hint of <b>${distortion.name}</b>. ${distortion.tip}</p>` : ""}
+       <p><button class="btn ghost small" id="freeToChat">💬 Talk it through</button></p>`;
+  $("#freeToChat")?.addEventListener("click", () => { showJTab("chat"); runChat(); });
+  e.target.reset();
+  freeMood = null;
+  $$("[data-fmood]").forEach((x) => x.classList.remove("active"));
+});
+
+/* History */
+const toolNames = { reframe: "Reframed a thought", breathe: "Breathing", ground: "Grounding", control: "Control check" };
+function renderJournal() {
+  const chats = journal.filter((s) => s.before != null && s.after != null);
+  const eased = chats.filter((s) => s.after < s.before).length;
+  const avgDrop = chats.length ? chats.reduce((a, s) => a + (s.before - s.after), 0) / chats.length : 0;
+  $("#journalStats").innerHTML = `
+    <h2>Your journal</h2>
+    <div class="stat-row">
+      <div class="stat"><b>${journal.length}</b>entries</div>
+      <div class="stat"><b>${eased}</b>times you felt lighter</div>
+      <div class="stat"><b>${avgDrop > 0 ? "−" + avgDrop.toFixed(1) : "–"}</b>average shift</div>
+    </div>`;
+  $("#journalList").innerHTML = journal.length
+    ? journal.slice().reverse().map((s) => `
+      <li><details>
+        <summary>
+          <span><strong>${s.mood ? moodEmoji[s.mood] + " " : ""}${new Date(s.start).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</strong>
+          <span class="entry-meta">${s.type === "free" ? "Free writing" : (s.tools || []).map((t) => toolNames[t]).join(", ") || "Chat"}</span></span>
+          ${s.before != null && s.after != null ? `<span class="shift">${s.before} → ${s.after}</span>` : ""}
+        </summary>
+        <dl class="qa">
+          ${s.gratitude ? `<dt>Three good things</dt><dd>${escapeHtml(s.gratitude)}</dd>` : ""}
+          ${s.entries.filter((x) => x.a !== "Done ✓").map((x) => `<dt>${escapeHtml(x.q)}</dt><dd>${escapeHtml(x.a)}</dd>`).join("")}
+          ${s.reframe ? `<dt>🔄 New thought</dt><dd><b>${escapeHtml(s.reframe.reframe)}</b> (belief in the old thought: ${s.reframe.beliefBefore} → ${s.reframe.beliefAfter})</dd>` : ""}
+          ${(s.steps || []).map((x) => `<dd>• ${escapeHtml(x)}</dd>`).join("")}
+        </dl>
+        <button class="link-btn" data-jdel="${s.id}">Delete entry</button>
+      </details></li>`).join("")
+    : `<li class="muted">Nothing here yet. Your chats and writing will appear here.</li>`;
+}
+$("#journalList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-jdel]");
+  if (!b || !confirm("Delete this journal entry?")) return;
+  journal = journal.filter((s) => String(s.id) !== b.dataset.jdel);
+  store.set("journal", journal);
+  renderJournal();
+});
+
+/* Tabs */
+function showJTab(tab) {
+  $$("[data-jtab]").forEach((b) => b.classList.toggle("active", b.dataset.jtab === tab));
+  $$(".jpane").forEach((p) => (p.hidden = p.id !== "jpane-" + tab));
+  $("#newChatBtn").hidden = tab !== "chat";
+}
+$$("[data-jtab]").forEach((b) => b.addEventListener("click", () => showJTab(b.dataset.jtab)));
+$("#newChatBtn").addEventListener("click", runChat);
+
+// Start the chat the first time the Journal tab opens.
+$$('[data-go="journal"]').forEach((b) => b.addEventListener("click", () => { if (!chatStarted) runChat(); }));
+window.addEventListener("hashchange", () => { if (location.hash === "#journal" && !chatStarted) runChat(); });
+if (location.hash === "#journal") runChat();
+renderJournal();

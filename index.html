@@ -58,6 +58,11 @@
         <span><strong>Log what I ate</strong><small>I'll check on your tummy afterwards</small></span>
       </button>
 
+      <button class="tile tile-meal tile-journal" data-go="journal">
+        <span class="tile-icon">💭</span>
+        <span><strong>Talk it out</strong><small>A gentle chat to untangle stress and heavy thoughts</small></span>
+      </button>
+
       <div class="grid-2">
         <button class="tile tile-sos" data-go="sos">
           <span class="tile-icon">🆘</span>
@@ -134,6 +139,51 @@
       <div class="card">
         <h2>Recent meals</h2>
         <ul class="entries" id="recentMeals"></ul>
+      </div>
+    </section>
+
+    <!-- JOURNAL -->
+    <section class="view" id="view-journal" aria-labelledby="h-journal">
+      <div class="row-between">
+        <h1 id="h-journal">Journal</h1>
+        <button class="btn ghost small" id="newChatBtn">↻ New chat</button>
+      </div>
+      <div class="pattern-picker" role="tablist">
+        <button class="chip active" data-jtab="chat">💬 Talk it out</button>
+        <button class="chip" data-jtab="write">✍️ Just write</button>
+        <button class="chip" data-jtab="history">📖 My journal</button>
+      </div>
+
+      <div class="jpane" id="jpane-chat">
+        <div class="chat" id="chat" aria-live="polite"></div>
+        <div class="chat-controls">
+          <div class="chips chat-chips" id="chatChips"></div>
+          <form class="chat-input" id="chatInputRow" hidden>
+            <textarea id="chatText" rows="1" placeholder="Type here…"></textarea>
+            <button class="btn primary send-btn" type="submit" aria-label="Send">➤</button>
+          </form>
+        </div>
+        <p class="muted small center">Private: your journal never leaves this device. This is a self-help tool, not therapy.</p>
+      </div>
+
+      <div class="jpane" id="jpane-write" hidden>
+        <form class="card" id="freeWriteForm">
+          <label class="field">
+            <span>How are you feeling?</span>
+            <div class="chips" id="freeMoodChips"></div>
+          </label>
+          <label class="field">
+            <span>Write whatever is on your mind</span>
+            <textarea id="freeText" rows="8" placeholder="No rules. No one else will read this."></textarea>
+          </label>
+          <button class="btn primary" type="submit">Save to journal</button>
+        </form>
+        <div class="card soft" id="freeReply" hidden></div>
+      </div>
+
+      <div class="jpane" id="jpane-history" hidden>
+        <div class="card" id="journalStats"></div>
+        <ul class="journal-list" id="journalList"></ul>
       </div>
     </section>
 
@@ -235,7 +285,7 @@
     <button data-go="home" class="active"><span>🏠</span>Home</button>
     <button data-go="meal"><span>🍽️</span>Meals</button>
     <button data-go="sos"><span>🆘</span>Flare</button>
-    <button data-go="breathe"><span>🫧</span>Breathe</button>
+    <button data-go="journal"><span>💭</span>Journal</button>
     <button data-go="food"><span>🥕</span>Food</button>
     <button data-go="log"><span>📓</span>Log</button>
   </nav>
