@@ -1,6 +1,6 @@
 // Gentle Gut service worker: makes the app work offline and shows check-in notifications.
 // Bump VERSION whenever app files change so installed copies pick up the update.
-const VERSION = "gentle-gut-v3";
+const VERSION = "gentle-gut-v4";
 const APP_FILES = [
   "./",
   "index.html",

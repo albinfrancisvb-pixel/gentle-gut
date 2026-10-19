@@ -63,6 +63,11 @@
         <span><strong>Talk it out</strong><small>A gentle chat to untangle stress and heavy thoughts</small></span>
       </button>
 
+      <button class="tile tile-meal tile-jar" data-go="jar">
+        <span class="tile-icon">🍪</span>
+        <span><strong>Cookie jar</strong><small>Your wins, saved for the hard days</small></span>
+      </button>
+
       <div class="grid-2">
         <button class="tile tile-sos" data-go="sos">
           <span class="tile-icon">🆘</span>
@@ -187,6 +192,33 @@
       </div>
     </section>
 
+    <!-- COOKIE JAR -->
+    <section class="view" id="view-jar" aria-labelledby="h-jar">
+      <h1 id="h-jar">Cookie jar 🍪</h1>
+      <p class="muted">Every win goes in the jar, big or small. On hard days, open it and remember what you've already done.</p>
+
+      <div class="card jar-hero">
+        <div class="jar" aria-hidden="true">
+          <div class="jar-lid"></div>
+          <div class="jar-body"><div class="jar-cookies" id="jarCookies"></div></div>
+        </div>
+        <div class="jar-info">
+          <p class="jar-count" id="jarCount">Your jar is empty</p>
+          <button class="btn primary" id="boostBtn">😔 I need a boost</button>
+          <button class="btn ghost" id="addCookieBtn">＋ Add a cookie</button>
+        </div>
+      </div>
+
+      <div class="row-between">
+        <h2>My cookies</h2>
+        <select id="jarSort" class="mini-select" aria-label="Sort cookies">
+          <option value="rating">Proudest first (10 → 1)</option>
+          <option value="date">Newest first</option>
+        </select>
+      </div>
+      <ul class="cookie-list" id="cookieList"></ul>
+    </section>
+
     <!-- SOS -->
     <section class="view" id="view-sos" aria-labelledby="h-sos">
       <h1 id="h-sos">You're going to be okay 💚</h1>
@@ -286,6 +318,7 @@
     <button data-go="meal"><span>🍽️</span>Meals</button>
     <button data-go="sos"><span>🆘</span>Flare</button>
     <button data-go="journal"><span>💭</span>Journal</button>
+    <button data-go="jar"><span>🍪</span>Jar</button>
     <button data-go="food"><span>🥕</span>Food</button>
     <button data-go="log"><span>📓</span>Log</button>
   </nav>
@@ -316,6 +349,50 @@
       <li>Tap <b>Add</b>. Gentle Gut will open like a normal app.</li>
     </ol>
     <button class="btn primary" id="iosClose">Got it</button>
+  </dialog>
+
+  <dialog class="checkin cookie-dialog" id="cookieDialog" aria-labelledby="cookieDialogTitle">
+    <form id="cookieForm">
+      <h2 id="cookieDialogTitle">Add a cookie 🍪</h2>
+      <label class="field">
+        <span>What did you achieve?</span>
+        <input type="text" id="cookieTitle" required maxlength="120" placeholder="e.g. Got through my exam despite a flare">
+      </label>
+      <label class="field">
+        <span>The story (how you did it, how it felt)</span>
+        <textarea id="cookieStory" rows="3" placeholder="Future you will love reading this…"></textarea>
+      </label>
+      <fieldset class="field">
+        <legend>How proud are you? <b id="cookieRatingVal">–</b>/10</legend>
+        <div class="rating-row" id="cookieRating" role="radiogroup" aria-label="Pride rating"></div>
+      </fieldset>
+      <label class="field">
+        <span>When?</span>
+        <input type="date" id="cookieDate">
+      </label>
+      <div class="field">
+        <span class="field-label">Photos</span>
+        <div class="photo-grid" id="cookiePhotos"></div>
+        <label class="btn ghost photo-add">
+          📷 Add photos
+          <input type="file" id="cookiePhotoInput" accept="image/*" multiple hidden>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="cookieCancel">Cancel</button>
+        <button type="submit" class="btn primary">Save cookie</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="boost" id="boostDialog" aria-label="Your cookie jar">
+    <button class="boost-close" id="boostClose" aria-label="Close">✕</button>
+    <div class="boost-stage" id="boostStage"></div>
+    <div class="boost-nav">
+      <button class="btn ghost" id="boostPrev">‹ Back</button>
+      <span id="boostPos"></span>
+      <button class="btn primary" id="boostNext">Next ›</button>
+    </div>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

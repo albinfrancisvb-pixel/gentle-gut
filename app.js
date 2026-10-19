@@ -755,7 +755,7 @@ window.addEventListener("appinstalled", () => {
 // Home-screen shortcuts open straight to a tab (e.g. ./#meal).
 function openFromHash() {
   const view = location.hash.slice(1);
-  if (["home", "meal", "journal", "sos", "breathe", "food", "log"].includes(view)) go(view);
+  if (["home", "meal", "journal", "jar", "sos", "breathe", "food", "log"].includes(view)) go(view);
 }
 openFromHash();
 window.addEventListener("hashchange", openFromHash);
@@ -984,6 +984,7 @@ async function toolLoop() {
         { label: "🫁 Calm my body", value: "breathe" },
         { label: "🌍 Ground me in the moment", value: "ground" },
         { label: "🎯 Can I control this?", value: "control" },
+        ...(cookies.length ? [{ label: "🍪 Open my cookie jar", value: "jar" }] : []),
         first ? { label: "💬 I just needed to vent", value: "vent" } : { label: "✅ Wrap up", value: "done" },
       ],
     });
@@ -999,6 +1000,12 @@ async function toolLoop() {
 }
 
 const tools = {
+  async jar() {
+    await say("Let's open your cookie jar. These are things you've already achieved, starting with your proudest.");
+    await new Promise((resolve) => openBoost(null, resolve));
+    await say(`That's ${cookies.length} reminder${cookies.length > 1 ? "s" : ""} of what you can do. The person who did all that is the same person facing this today. 💚`);
+  },
+
   async reframe() {
     await say("Let's look at the thought itself. In one sentence, what's the thought that's bothering you most?");
     const thought = await ask({ text: true, placeholder: "e.g. I'll embarrass myself if my stomach acts up" });
@@ -1143,15 +1150,17 @@ $("#freeWriteForm").addEventListener("submit", (e) => {
     ? `<strong>Thank you for writing this down. You deserve support from a real person.</strong> If you might hurt yourself, please call your local emergency number, or in India Tele-MANAS <a href="tel:14416">14416</a>, in the US <a href="tel:988">988</a>, or find a helpline at <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.`
     : `<strong>Saved 💚</strong> ${theme ? theme.reply : "Getting it out of your head and onto the page is a real step."}
        ${distortion ? `<p>I noticed a hint of <b>${distortion.name}</b>. ${distortion.tip}</p>` : ""}
-       <p><button class="btn ghost small" id="freeToChat">💬 Talk it through</button></p>`;
+       <p><button class="btn ghost small" id="freeToHistory">📖 View in my journal</button>
+       <button class="btn ghost small" id="freeToChat">💬 Talk it through</button></p>`;
   $("#freeToChat")?.addEventListener("click", () => { showJTab("chat"); runChat(); });
+  $("#freeToHistory")?.addEventListener("click", () => showJTab("history"));
   e.target.reset();
   freeMood = null;
   $$("[data-fmood]").forEach((x) => x.classList.remove("active"));
 });
 
 /* History */
-const toolNames = { reframe: "Reframed a thought", breathe: "Breathing", ground: "Grounding", control: "Control check" };
+const toolNames = { jar: "Cookie jar", reframe: "Reframed a thought", breathe: "Breathing", ground: "Grounding", control: "Control check" };
 function renderJournal() {
   const chats = journal.filter((s) => s.before != null && s.after != null);
   const eased = chats.filter((s) => s.after < s.before).length;
@@ -1203,3 +1212,310 @@ $$('[data-go="journal"]').forEach((b) => b.addEventListener("click", () => { if 
 window.addEventListener("hashchange", () => { if (location.hash === "#journal" && !chatStarted) runChat(); });
 if (location.hash === "#journal") runChat();
 renderJournal();
+
+/* ---------- Cookie jar ---------- */
+// Achievements live in localStorage; photos are too big for it, so they go in IndexedDB as resized JPEGs.
+const photoDB = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open("gentle-gut", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("photos");
+      req.onsuccess = () => resolve((this.db = req.result));
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("photos", mode);
+      const req = fn(tx.objectStore("photos"));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+  get: (id) => photoDB.run("readonly", (s) => s.get(id)),
+  put: (id, blob) => photoDB.run("readwrite", (s) => s.put(blob, id)),
+  del: (id) => photoDB.run("readwrite", (s) => s.delete(id)),
+};
+
+const photoUrls = new Map();
+async function photoUrl(id) {
+  if (!photoUrls.has(id)) {
+    const blob = await photoDB.get(id).catch(() => null);
+    if (!blob) return "";
+    photoUrls.set(id, URL.createObjectURL(blob));
+  }
+  return photoUrls.get(id);
+}
+function loadPhotos(root) {
+  root.querySelectorAll("img[data-pid]").forEach(async (img) => {
+    img.src = await photoUrl(img.dataset.pid);
+  });
+}
+
+// Phone photos can be 5–10 MB; shrink them so dozens fit comfortably on the device.
+function resizeImage(file, max = 1600) {
+  return new Promise((resolve, reject) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * k);
+      c.height = Math.round(img.naturalHeight * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(src);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/jpeg", 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(src); reject(new Error("decode")); };
+    img.src = src;
+  });
+}
+
+const MAX_PHOTOS = 6;
+let cookies = store.get("cookies", []);
+let cForm = { id: null, rating: null, photos: [], removed: [] };
+const cookieDialog = $("#cookieDialog");
+
+const byRating = (a, b) => b.rating - a.rating || b.date.localeCompare(a.date);
+const fmtCookieDate = (d) => new Date(d + "T12:00").toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+
+function renderRating() {
+  $("#cookieRating").innerHTML = Array.from({ length: 10 }, (_, i) => {
+    const n = i + 1;
+    return `<button type="button" role="radio" aria-checked="${n === cForm.rating}" data-rate="${n}"
+      class="${cForm.rating && n <= cForm.rating ? "on" : ""} ${n === cForm.rating ? "picked" : ""}">${n}</button>`;
+  }).join("");
+  $("#cookieRatingVal").textContent = cForm.rating ?? "–";
+}
+$("#cookieRating").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rate]");
+  if (!b) return;
+  cForm.rating = Number(b.dataset.rate);
+  renderRating();
+});
+
+function renderFormPhotos() {
+  $("#cookiePhotos").innerHTML = cForm.photos.map((p, i) =>
+    `<div class="photo-thumb"><img src="${p.url}" alt=""><button type="button" data-rmphoto="${i}" aria-label="Remove photo">✕</button></div>`
+  ).join("");
+}
+$("#cookiePhotos").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rmphoto]");
+  if (!b) return;
+  const [p] = cForm.photos.splice(Number(b.dataset.rmphoto), 1);
+  if (p.isNew) URL.revokeObjectURL(p.url);
+  else cForm.removed.push(p.id);
+  renderFormPhotos();
+});
+
+$("#cookiePhotoInput").addEventListener("change", async (e) => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  const room = MAX_PHOTOS - cForm.photos.length;
+  if (files.length > room) toast(`Up to ${MAX_PHOTOS} photos per cookie`);
+  for (const file of files.slice(0, Math.max(0, room))) {
+    try {
+      const blob = await resizeImage(file);
+      cForm.photos.push({ id: `p${Date.now()}${Math.random().toString(36).slice(2, 7)}`, blob, url: URL.createObjectURL(blob), isNew: true });
+      renderFormPhotos();
+    } catch {
+      toast("Couldn't read that photo");
+    }
+  }
+});
+
+async function openCookieForm(cookie = null) {
+  cForm = { id: cookie?.id ?? null, rating: cookie?.rating ?? null, photos: [], removed: [] };
+  $("#cookieDialogTitle").textContent = cookie ? "Edit cookie 🍪" : "Add a cookie 🍪";
+  $("#cookieTitle").value = cookie?.title ?? "";
+  $("#cookieStory").value = cookie?.story ?? "";
+  $("#cookieDate").value = cookie?.date ?? todayKey();
+  renderRating();
+  renderFormPhotos();
+  cookieDialog.showModal();
+  if (cookie) {
+    for (const id of cookie.photoIds) cForm.photos.push({ id, url: await photoUrl(id), isNew: false });
+    renderFormPhotos();
+  }
+}
+function closeCookieForm() {
+  cForm.photos.filter((p) => p.isNew).forEach((p) => URL.revokeObjectURL(p.url));
+  cookieDialog.close();
+}
+$("#addCookieBtn").addEventListener("click", () => openCookieForm());
+$("#cookieCancel").addEventListener("click", closeCookieForm);
+cookieDialog.addEventListener("cancel", (e) => { e.preventDefault(); closeCookieForm(); });
+
+$("#cookieForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const title = $("#cookieTitle").value.trim();
+  if (!title) return toast("Give your cookie a name");
+  if (!cForm.rating) return toast("Pick how proud you are, 1 to 10");
+  try {
+    for (const p of cForm.photos.filter((p) => p.isNew)) {
+      await photoDB.put(p.id, p.blob);
+      photoUrls.set(p.id, p.url); // reuse the preview URL
+    }
+    for (const id of cForm.removed) {
+      await photoDB.del(id);
+      URL.revokeObjectURL(photoUrls.get(id));
+      photoUrls.delete(id);
+    }
+  } catch {
+    return toast("Couldn't save the photos. Your phone's storage may be full.");
+  }
+  const data = {
+    title,
+    story: $("#cookieStory").value.trim(),
+    rating: cForm.rating,
+    date: $("#cookieDate").value || todayKey(),
+    photoIds: cForm.photos.map((p) => p.id),
+  };
+  const isNew = !cForm.id;
+  if (isNew) cookies.push({ id: Date.now(), created: Date.now(), ...data });
+  else Object.assign(cookies.find((c) => c.id === cForm.id), data);
+  store.set("cookies", cookies);
+  cForm.photos.forEach((p) => (p.isNew = false)); // now owned by photoUrls, don't revoke
+  cookieDialog.close();
+  renderJar();
+  toast(isNew ? "🍪 Into the jar! Well done." : "Cookie updated");
+  navigator.storage?.persist?.().catch(() => {}); // ask the browser not to clear the jar when space is low
+});
+
+function renderJar() {
+  const n = cookies.length;
+  $("#jarCookies").innerHTML = '<span class="cookie-dot"></span>'.repeat(Math.min(n, 15));
+  $("#jarCount").textContent = n ? `${n} cookie${n > 1 ? "s" : ""} in your jar` : "Your jar is empty. Add your first win!";
+  $("#boostBtn").disabled = !n;
+
+  const sorted = cookies.slice().sort($("#jarSort").value === "date" ? (a, b) => b.date.localeCompare(a.date) || b.id - a.id : byRating);
+  $("#cookieList").innerHTML = n
+    ? sorted.map((c) => `
+      <li class="cookie-card">
+        ${c.photoIds.length ? `<div class="cookie-photos">${c.photoIds.slice(0, 3).map((id) => `<img data-pid="${id}" data-open="${c.id}" alt="">`).join("")}</div>` : ""}
+        <div class="cookie-body">
+          <div class="cookie-head">
+            <span class="cookie-title">${escapeHtml(c.title)}</span>
+            <span class="cookie-rating">🍪 ${c.rating}/10</span>
+          </div>
+          <span class="entry-meta">${fmtCookieDate(c.date)}${c.photoIds.length > 3 ? ` · ${c.photoIds.length} photos` : ""}</span>
+          ${c.story ? `<p class="cookie-story">${escapeHtml(c.story)}</p>` : ""}
+          <div class="cookie-actions">
+            <button class="link-btn" data-edit="${c.id}">Edit</button>
+            <button class="link-btn" data-del="${c.id}">Delete</button>
+          </div>
+        </div>
+      </li>`).join("")
+    : `<li class="muted">Small wins count too: a good day at work, eating out without a flare, asking for help, getting out of bed on a hard day.</li>`;
+  loadPhotos($("#cookieList"));
+}
+$("#jarSort").addEventListener("change", renderJar);
+$("#cookieList").addEventListener("click", async (e) => {
+  const find = (id) => cookies.find((c) => String(c.id) === id);
+  const t = e.target;
+  if (t.dataset.edit) return openCookieForm(find(t.dataset.edit));
+  if (t.dataset.open) return openBoost(Number(t.dataset.open));
+  if (t.dataset.del && confirm("Remove this cookie from your jar?")) {
+    const c = find(t.dataset.del);
+    for (const id of c.photoIds) {
+      await photoDB.del(id).catch(() => {});
+      URL.revokeObjectURL(photoUrls.get(id));
+      photoUrls.delete(id);
+    }
+    cookies = cookies.filter((x) => x !== c);
+    store.set("cookies", cookies);
+    renderJar();
+  }
+});
+
+/* Boost: walk through the jar from proudest (10) down to 1 */
+const boostDialog = $("#boostDialog");
+const youLines = ["You did this.", "That was all you.", "Remember how that felt?", "You've done hard things before.", "Proof that you keep going."];
+let boost = { slides: [], i: 0, photo: 0, onClose: null };
+
+function openBoost(startId = null, onClose = null) {
+  if (!cookies.length) return toast("Add a cookie first");
+  const order = cookies.slice().sort(byRating);
+  boost = { slides: ["intro", ...order, "end"], i: 0, photo: 0, onClose };
+  if (startId) boost.i = boost.slides.findIndex((s) => s.id === startId);
+  renderBoost();
+  boostDialog.showModal();
+}
+
+function renderBoost() {
+  const s = boost.slides[boost.i];
+  const total = boost.slides.length - 2;
+  const stage = $("#boostStage");
+  if (s === "intro") {
+    stage.innerHTML = `<div class="boost-intro"><div class="big">🍪</div>
+      <h2>You have ${total} cookie${total > 1 ? "s" : ""} in your jar</h2>
+      <p class="boost-story">Hard days make us forget what we're capable of. Let's look back, starting with your proudest moment.</p></div>`;
+  } else if (s === "end") {
+    stage.innerHTML = `<div class="boost-end"><div class="big">💪</div>
+      <h2>Every one of these was you.</h2>
+      <p class="boost-story">The person who did all that is the same person facing today. You can do hard things again. 💚</p></div>`;
+  } else {
+    const p = s.photoIds;
+    stage.innerHTML = `
+      ${p.length ? `<div class="boost-photo">
+        <img data-pid="${p[boost.photo]}" alt="">
+        ${p.length > 1 ? `<button class="photo-step prev" data-step="-1" aria-label="Previous photo"></button>
+        <button class="photo-step next" data-step="1" aria-label="Next photo"></button>
+        <div class="photo-dots">${p.map((_, j) => `<i class="${j === boost.photo ? "on" : ""}"></i>`).join("")}</div>` : ""}
+      </div>` : ""}
+      <div class="boost-rating">${"🍪".repeat(Math.ceil(s.rating / 2))} ${s.rating}/10 proud</div>
+      <h2>${escapeHtml(s.title)}</h2>
+      ${s.story ? `<p class="boost-story">${escapeHtml(s.story)}</p>` : ""}
+      <div class="boost-date">${fmtCookieDate(s.date)}</div>
+      <div class="boost-you">${youLines[boost.i % youLines.length]}</div>`;
+    loadPhotos(stage);
+  }
+  $("#boostPrev").disabled = boost.i === 0;
+  $("#boostNext").textContent = s === "end" ? "Close" : s === "intro" ? "Start ›" : "Next ›";
+  $("#boostPos").textContent = typeof s === "object" ? `${boost.i} of ${total}` : "";
+  stage.scrollTop = 0;
+}
+function stepBoost(d) {
+  const next = boost.i + d;
+  if (next >= boost.slides.length) return closeBoost();
+  if (next < 0) return;
+  boost.i = next;
+  boost.photo = 0;
+  renderBoost();
+}
+function closeBoost() {
+  boostDialog.close();
+  const cb = boost.onClose;
+  boost.onClose = null;
+  cb?.();
+}
+$("#boostNext").addEventListener("click", () => stepBoost(1));
+$("#boostPrev").addEventListener("click", () => stepBoost(-1));
+$("#boostClose").addEventListener("click", closeBoost);
+boostDialog.addEventListener("cancel", (e) => { e.preventDefault(); closeBoost(); });
+$("#boostStage").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-step]");
+  if (!b) return;
+  const n = boost.slides[boost.i].photoIds.length;
+  boost.photo = (boost.photo + Number(b.dataset.step) + n) % n;
+  renderBoost();
+});
+boostDialog.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight") stepBoost(1);
+  if (e.key === "ArrowLeft") stepBoost(-1);
+});
+let touchX = null;
+boostDialog.addEventListener("touchstart", (e) => (touchX = e.touches[0].clientX), { passive: true });
+boostDialog.addEventListener("touchend", (e) => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  touchX = null;
+  if (Math.abs(dx) > 60) stepBoost(dx < 0 ? 1 : -1);
+});
+$("#boostBtn").addEventListener("click", () => openBoost());
+
+renderJar();
