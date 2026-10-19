@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#4f9a7c"/>
+  <g id="leaf">
+    <path d="M136 384 L108 412" stroke="#eaf6ef" stroke-width="22" stroke-linecap="round"/>
+    <path d="M136 384 C136 220 240 120 400 112 C400 280 300 384 136 384 Z" fill="#eaf6ef"/>
+    <path d="M148 372 L340 176" stroke="#4f9a7c" stroke-width="14" stroke-linecap="round"/>
+    <path d="M232 286 L232 214 M282 236 L282 178 M232 286 L304 286 M282 236 L340 236" stroke="#4f9a7c" stroke-width="10" stroke-linecap="round"/>
+  </g>
+</svg>

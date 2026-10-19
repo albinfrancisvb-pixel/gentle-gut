@@ -1,0 +1,22 @@
+{
+  "name": "Gentle Gut",
+  "short_name": "Gentle Gut",
+  "description": "A calm companion for living with IBS: meal check-ins, flare-up help, breathing, food guide and symptom log.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f8f4",
+  "theme_color": "#4f9a7c",
+  "categories": ["health", "medical", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Log a meal", "url": "./#meal", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Flare-up help", "url": "./#sos", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gentle Gut</title>
+  <meta name="description" content="A calm companion for people living with IBS: check-ins, breathing, flare-up help, food guide and symptom log.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#4f9a7c">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gentle Gut">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🌿</span>
+      <span>Gentle Gut</span>
+    </div>
+    <div class="top-actions">
+      <button class="btn primary small install-btn" id="installBtn" hidden>⬇ Install app</button>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">🌙</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- HOME -->
+    <section class="view active" id="view-home" aria-labelledby="h-home">
+      <div class="hero">
+        <p class="greeting" id="greeting">Hello</p>
+        <h1 id="h-home">How is your tummy today?</h1>
+        <p class="affirmation" id="affirmation"></p>
+      </div>
+
+      <div class="card">
+        <h2>Daily check-in</h2>
+        <p class="muted">Tap what fits. There's no wrong answer.</p>
+        <div class="mood-row" role="radiogroup" aria-label="How do you feel">
+          <button class="mood" data-mood="1" role="radio" aria-checked="false"><span>😣</span>Rough</button>
+          <button class="mood" data-mood="2" role="radio" aria-checked="false"><span>😕</span>Meh</button>
+          <button class="mood" data-mood="3" role="radio" aria-checked="false"><span>🙂</span>Okay</button>
+          <button class="mood" data-mood="4" role="radio" aria-checked="false"><span>😊</span>Good</button>
+          <button class="mood" data-mood="5" role="radio" aria-checked="false"><span>🌞</span>Great</button>
+        </div>
+        <p class="checkin-reply" id="checkinReply" aria-live="polite"></p>
+      </div>
+
+      <button class="card due-banner" id="dueBanner" hidden></button>
+
+      <button class="tile tile-meal" data-go="meal">
+        <span class="tile-icon">🍽️</span>
+        <span><strong>Log what I ate</strong><small>I'll check on your tummy afterwards</small></span>
+      </button>
+
+      <div class="grid-2">
+        <button class="tile tile-sos" data-go="sos">
+          <span class="tile-icon">🆘</span>
+          <strong>Flare-up help</strong>
+          <small>Step-by-step comfort, right now</small>
+        </button>
+        <button class="tile tile-breathe" data-go="breathe">
+          <span class="tile-icon">🫧</span>
+          <strong>Breathe</strong>
+          <small>Calm the gut–brain loop</small>
+        </button>
+        <button class="tile tile-food" data-go="food">
+          <span class="tile-icon">🥕</span>
+          <strong>Food guide</strong>
+          <small>Low-FODMAP quick check</small>
+        </button>
+        <button class="tile tile-log" data-go="log">
+          <span class="tile-icon">📓</span>
+          <strong>My log</strong>
+          <small>Spot your patterns</small>
+        </button>
+      </div>
+
+      <div class="card water">
+        <div>
+          <h2>Water today</h2>
+          <p class="muted">Steady sips help digestion.</p>
+        </div>
+        <div class="water-cups" id="waterCups" aria-label="Glasses of water"></div>
+      </div>
+    </section>
+
+    <!-- MEAL -->
+    <section class="view" id="view-meal" aria-labelledby="h-meal">
+      <h1 id="h-meal">Log a meal</h1>
+      <p class="muted">Add what you ate. Once it's had time to digest, I'll ask how your stomach feels.</p>
+
+      <form class="card" id="mealForm">
+        <label class="field">
+          <span>What did you eat?</span>
+          <div class="add-row">
+            <input type="text" id="mealFood" list="foodNames" placeholder="Type a food, e.g. rice" autocomplete="off">
+            <button type="button" class="btn ghost" id="addFoodBtn">Add</button>
+          </div>
+          <datalist id="foodNames"></datalist>
+        </label>
+        <div class="chips" id="mealChips"></div>
+
+        <label class="field top-gap">
+          <span>When did you eat?</span>
+          <input type="datetime-local" id="mealTime">
+        </label>
+        <label class="field">
+          <span>Ask me about my tummy</span>
+          <select id="mealDelay">
+            <option value="auto" selected>Automatically (based on the foods)</option>
+            <option value="0.5">In 30 minutes</option>
+            <option value="1">In 1 hour</option>
+            <option value="2">In 2 hours</option>
+            <option value="3">In 3 hours</option>
+            <option value="4">In 4 hours</option>
+            <option value="6">In 6 hours</option>
+          </select>
+        </label>
+        <p class="muted small" id="mealPreview"></p>
+        <button class="btn primary" type="submit">Save meal</button>
+      </form>
+
+      <div class="card">
+        <h2>Waiting to check in</h2>
+        <ul class="entries" id="pendingMeals"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Recent meals</h2>
+        <ul class="entries" id="recentMeals"></ul>
+      </div>
+    </section>
+
+    <!-- SOS -->
+    <section class="view" id="view-sos" aria-labelledby="h-sos">
+      <h1 id="h-sos">You're going to be okay 💚</h1>
+      <p class="muted">Flares pass. Take these one at a time, at your own pace.</p>
+      <ol class="steps" id="sosSteps"></ol>
+      <div class="card warn">
+        <strong>Please get medical help</strong> if you have blood in your stool, black stools, a fever,
+        unexplained weight loss, vomiting, or severe pain that doesn't ease. These aren't typical IBS.
+      </div>
+    </section>
+
+    <!-- BREATHE -->
+    <section class="view" id="view-breathe" aria-labelledby="h-breathe">
+      <h1 id="h-breathe">Belly breathing</h1>
+      <p class="muted">Slow breaths tell your nervous system it's safe, which can ease cramping.</p>
+      <div class="pattern-picker" role="tablist">
+        <button class="chip active" data-pattern="calm">Calm 4·6</button>
+        <button class="chip" data-pattern="box">Box 4·4·4·4</button>
+        <button class="chip" data-pattern="sleep">Sleep 4·7·8</button>
+      </div>
+      <div class="breath-stage">
+        <div class="breath-circle" id="breathCircle">
+          <span id="breathText">Ready</span>
+          <small id="breathCount"></small>
+        </div>
+      </div>
+      <button class="btn primary big" id="breathBtn">Start</button>
+      <p class="muted center" id="breathRounds"></p>
+    </section>
+
+    <!-- FOOD -->
+    <section class="view" id="view-food" aria-labelledby="h-food">
+      <h1 id="h-food">Food guide</h1>
+      <p class="muted">General low-FODMAP guidance. Everyone's gut is different, so test foods slowly.</p>
+      <input class="search" id="foodSearch" type="search" placeholder="Search a food… e.g. garlic, rice, apple" autocomplete="off">
+      <div class="pattern-picker" id="foodFilter">
+        <button class="chip active" data-filter="all">All</button>
+        <button class="chip" data-filter="low">✅ Usually gentle</button>
+        <button class="chip" data-filter="mod">⚠️ Portion matters</button>
+        <button class="chip" data-filter="high">⛔ Common trigger</button>
+        <button class="chip" data-filter="mine">🚩 My triggers</button>
+      </div>
+      <ul class="food-list" id="foodList"></ul>
+    </section>
+
+    <!-- LOG -->
+    <section class="view" id="view-log" aria-labelledby="h-log">
+      <h1 id="h-log">My log</h1>
+      <p class="muted">Jot down how you feel. Over time, patterns show up.</p>
+
+      <form class="card" id="logForm">
+        <label class="field">
+          <span>Discomfort level: <b id="painVal">3</b>/10</span>
+          <input type="range" min="0" max="10" value="3" id="pain">
+        </label>
+        <fieldset class="field">
+          <legend>Symptoms</legend>
+          <div class="chips" id="symptomChips"></div>
+        </fieldset>
+        <label class="field">
+          <span>What did you eat?</span>
+          <input type="text" id="meal" placeholder="e.g. oats, banana, coffee">
+        </label>
+        <label class="field">
+          <span>Stress level</span>
+          <select id="stress">
+            <option value="low">Low 😌</option>
+            <option value="mid" selected>Medium 😐</option>
+            <option value="high">High 😰</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Notes (optional)</span>
+          <textarea id="notes" rows="2" placeholder="Slept badly, period, travel…"></textarea>
+        </label>
+        <button class="btn primary" type="submit">Save entry</button>
+      </form>
+
+      <div class="card">
+        <h2>Last 7 days</h2>
+        <div class="week-chart" id="weekChart" aria-label="Average discomfort per day"></div>
+        <p class="muted small" id="insight"></p>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <h2>Entries</h2>
+          <button class="btn ghost small" id="exportBtn">Export for my doctor</button>
+        </div>
+        <ul class="entries" id="entries"></ul>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main">
+    <button data-go="home" class="active"><span>🏠</span>Home</button>
+    <button data-go="meal"><span>🍽️</span>Meals</button>
+    <button data-go="sos"><span>🆘</span>Flare</button>
+    <button data-go="breathe"><span>🫧</span>Breathe</button>
+    <button data-go="food"><span>🥕</span>Food</button>
+    <button data-go="log"><span>📓</span>Log</button>
+  </nav>
+
+  <p class="disclaimer">Gentle Gut offers comfort and tracking, not medical advice. Please work with a doctor or dietitian on your IBS care.</p>
+
+  <dialog class="checkin" id="checkinDialog" aria-labelledby="checkinTitle">
+    <h2 id="checkinTitle">How's your tummy?</h2>
+    <p class="muted" id="checkinFoods"></p>
+    <div class="answer-row">
+      <button class="answer" data-answer="good"><span>😊</span>All good</button>
+      <button class="answer" data-answer="off"><span>😕</span>A little off</button>
+      <button class="answer" data-answer="hurt"><span>😣</span>It hurts</button>
+    </div>
+    <fieldset class="field top-gap" id="checkinSymptomsBox" hidden>
+      <legend>What are you feeling? (optional)</legend>
+      <div class="chips" id="checkinSymptoms"></div>
+      <button class="btn primary top-gap" id="checkinSave">Save</button>
+    </fieldset>
+    <button class="btn ghost small top-gap" id="checkinLater">Ask me again in 30 min</button>
+  </dialog>
+
+  <dialog class="checkin" id="iosInstall" aria-labelledby="iosTitle">
+    <h2 id="iosTitle">Add Gentle Gut to your Home Screen</h2>
+    <ol class="ios-steps">
+      <li>Tap the <b>Share</b> button <span aria-hidden="true">⬆️</span> at the bottom of Safari.</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Tap <b>Add</b>. Gentle Gut will open like a normal app.</li>
+    </ol>
+    <button class="btn primary" id="iosClose">Got it</button>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
