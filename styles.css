@@ -488,3 +488,28 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 .sync-status .btn { width: auto; flex: none; }
 
 .confirm-dialog p { margin: 0 0 16px; font-weight: 600; }
+
+/* One-tap bad food log */
+.level-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.level-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 14px 8px;
+  border-radius: 16px; border: 2px solid transparent; font-weight: 800;
+}
+.level-btn span { font-size: 2rem; }
+.level-btn small { font-weight: 600; opacity: .75; }
+.level-btn.bad { background: var(--food); color: var(--text); }
+.level-btn.worst { background: var(--sos); color: var(--text); }
+.level-btn:active { transform: scale(.97); }
+.suggest-chips { margin-bottom: 6px; }
+.suggest-chips:empty, #logChips:empty { display: none; }
+.suggest-chips .chip { background: var(--surface-2); border-style: dashed; }
+.badge.worst { color: #fff; background: var(--high); border: 1.5px solid var(--high); }
+.badge.bad { color: var(--mod); border: 1.5px solid var(--mod); }
+.food-list li.worst { border-color: var(--high); }
+.food-list .safe { display: block; border-color: var(--low); background: var(--primary-soft); }
+.food-list .safe .btn { margin-top: 8px; width: auto; }
+.bar.worst { background: var(--high); }
+.bar.bad { background: var(--mod); }
+.entries .lvl { font-weight: 800; }
+.food-list .similar-head { background: none; border: none; padding: 8px 2px 2px; color: var(--muted); font-weight: 700; font-size: .85rem; }
+.badge { white-space: nowrap; }

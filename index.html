@@ -92,13 +92,13 @@
         </button>
         <button class="tile tile-food" data-go="food">
           <span class="tile-icon">🥕</span>
-          <strong>Food guide</strong>
-          <small>Low-FODMAP quick check</small>
+          <strong>My bad foods</strong>
+          <small>Search what to avoid</small>
         </button>
         <button class="tile tile-log" data-go="log">
           <span class="tile-icon">📓</span>
-          <strong>My log</strong>
-          <small>Spot your patterns</small>
+          <strong>Log a bad food</strong>
+          <small>One tap: bad or worst</small>
         </button>
       </div>
 
@@ -260,63 +260,51 @@
       <p class="muted center" id="breathRounds"></p>
     </section>
 
-    <!-- FOOD -->
+    <!-- FOOD: the person's own bad foods -->
     <section class="view" id="view-food" aria-labelledby="h-food">
-      <h1 id="h-food">Food guide</h1>
-      <p class="muted">General low-FODMAP guidance. Everyone's gut is different, so test foods slowly.</p>
-      <input class="search" id="foodSearch" type="search" placeholder="Search a food… e.g. garlic, rice, apple" autocomplete="off">
+      <h1 id="h-food">My bad foods</h1>
+      <p class="muted">Foods you've logged as bad or worst. Search before you eat something.</p>
+      <input class="search" id="foodSearch" type="search" placeholder="Can I eat…? Type a food" autocomplete="off" autocapitalize="off" spellcheck="false">
       <div class="pattern-picker" id="foodFilter">
         <button class="chip active" data-filter="all">All</button>
-        <button class="chip" data-filter="low">✅ Usually gentle</button>
-        <button class="chip" data-filter="mod">⚠️ Portion matters</button>
-        <button class="chip" data-filter="high">⛔ Common trigger</button>
-        <button class="chip" data-filter="mine">🚩 My triggers</button>
+        <button class="chip" data-filter="worst">😖 Worst</button>
+        <button class="chip" data-filter="bad">😣 Bad</button>
       </div>
       <ul class="food-list" id="foodList"></ul>
+      <button class="btn ghost" data-go="log">＋ Log a bad food</button>
     </section>
 
-    <!-- LOG -->
+    <!-- LOG: one-tap bad / worst food logging -->
     <section class="view" id="view-log" aria-labelledby="h-log">
-      <h1 id="h-log">My log</h1>
-      <p class="muted">Jot down how you feel. Over time, patterns show up.</p>
+      <h1 id="h-log">Log a bad food</h1>
+      <p class="muted">Something upset your stomach? Type it and tap how bad it was. That's it.</p>
 
-      <form class="card" id="logForm">
-        <label class="field">
-          <span>Discomfort level: <b id="painVal">3</b>/10</span>
-          <input type="range" min="0" max="10" value="3" id="pain">
-        </label>
-        <fieldset class="field">
-          <legend>Symptoms</legend>
-          <div class="chips" id="symptomChips"></div>
-        </fieldset>
+      <div class="card">
         <label class="field">
           <span>What did you eat?</span>
-          <input type="text" id="meal" placeholder="e.g. oats, banana, coffee">
+          <div class="add-row">
+            <input type="text" id="logFood" placeholder="e.g. milk, garlic bread" autocomplete="off" enterkeyhint="done">
+            <button type="button" class="btn ghost" id="logAddBtn">Add</button>
+          </div>
         </label>
-        <label class="field">
-          <span>Stress level</span>
-          <select id="stress">
-            <option value="low">Low 😌</option>
-            <option value="mid" selected>Medium 😐</option>
-            <option value="high">High 😰</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Notes (optional)</span>
-          <textarea id="notes" rows="2" placeholder="Slept badly, period, travel…"></textarea>
-        </label>
-        <button class="btn primary" type="submit">Save entry</button>
-      </form>
+        <div class="chips suggest-chips" id="logSuggest" aria-label="Suggestions"></div>
+        <div class="chips" id="logChips"></div>
+        <p class="field-label top-gap">How bad was it?</p>
+        <div class="level-row">
+          <button type="button" class="level-btn bad" data-level="bad"><span>😣</span><b>Bad</b><small>Uncomfortable</small></button>
+          <button type="button" class="level-btn worst" data-level="worst"><span>😖</span><b>Worst</b><small>Really hurt</small></button>
+        </div>
+      </div>
 
       <div class="card">
         <h2>Last 7 days</h2>
-        <div class="week-chart" id="weekChart" aria-label="Average discomfort per day"></div>
+        <div class="week-chart" id="weekChart" aria-label="Bad food logs per day"></div>
         <p class="muted small" id="insight"></p>
       </div>
 
       <div class="card">
         <div class="row-between">
-          <h2>Entries</h2>
+          <h2>History</h2>
           <button class="btn ghost small" id="exportBtn">Export for my doctor</button>
         </div>
         <ul class="entries" id="entries"></ul>
@@ -340,15 +328,10 @@
     <h2 id="checkinTitle">How's your tummy?</h2>
     <p class="muted" id="checkinFoods"></p>
     <div class="answer-row">
-      <button class="answer" data-answer="good"><span>😊</span>All good</button>
-      <button class="answer" data-answer="off"><span>😕</span>A little off</button>
-      <button class="answer" data-answer="hurt"><span>😣</span>It hurts</button>
+      <button class="answer" data-answer="good"><span>😊</span>Fine</button>
+      <button class="answer" data-answer="off"><span>😣</span>Bad</button>
+      <button class="answer" data-answer="hurt"><span>😖</span>Worst</button>
     </div>
-    <fieldset class="field top-gap" id="checkinSymptomsBox" hidden>
-      <legend>What are you feeling? (optional)</legend>
-      <div class="chips" id="checkinSymptoms"></div>
-      <button class="btn primary top-gap" id="checkinSave">Save</button>
-    </fieldset>
     <button class="btn ghost small top-gap" id="checkinLater">Ask me again in 30 min</button>
   </dialog>
 

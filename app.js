@@ -213,7 +213,7 @@ $$("[data-pattern]").forEach((b) =>
   })
 );
 
-/* ---------- Food guide ---------- */
+/* ---------- Food data (for meal check-in timing only) ---------- */
 // General low-FODMAP guidance; serving sizes matter. Not a substitute for a dietitian.
 const foods = [
   ["Rice", "low", "White or brown, a great safe base.", "grain"],
@@ -272,60 +272,163 @@ const foods = [
   ["Inulin / chicory root", "high", "Often hidden in 'high fibre' bars.", "sweet"],
   ["Sugar-free gum (sorbitol, xylitol)", "high", "Polyols often cause bloating.", "sweet"],
 ];
-const badgeText = { low: "Usually gentle", mod: "Portion matters", high: "Common trigger", mine: "" };
-let foodFilter = "all";
+// (The list above is never shown. It only tells meal check-ins how long each kind of food takes.)
 
-// Personal history per food: { key: { name, hurt, good } }. 2+ painful check-ins = personal trigger.
-const TRIGGER_THRESHOLD = 2;
-const foodStats = store.get("foodStats", {});
-const foodKey = (name) => name.trim().toLowerCase();
-const isTrigger = (name) => (foodStats[foodKey(name)]?.hurt || 0) >= TRIGGER_THRESHOLD;
+/* ---------- My bad foods ---------- */
+// The Food tab shows only foods the person has logged as Bad or Worst, from the Log tab or meal check-ins.
+const foodKey = (name) => name.trim().toLowerCase().replace(/\s+/g, " ");
+const prettyName = (s) => s.trim().charAt(0).toUpperCase() + s.trim().slice(1);
+const levelInfo = { bad: { emoji: "😣", label: "Bad" }, worst: { emoji: "😖", label: "Worst" } };
 
-// Base list plus any foods the person typed in themselves.
-function allFoods() {
-  const known = new Set(foods.map(([n]) => foodKey(n)));
-  const custom = Object.values(foodStats)
-    .filter((s) => !known.has(foodKey(s.name)))
-    .map((s) => [s.name, "mine", "Added by you", "custom"]);
-  return foods.concat(custom);
+let entries = store.get("entries", []);
+let foodCleared = store.get("foodCleared", {}); // food key → when it was removed from the list
+
+// Older entries used a 0–10 scale and a free-text "What did you eat?" box; read both formats.
+function entryLevel(e) {
+  if (e.level) return e.level;
+  return e.pain >= 7 ? "worst" : e.pain >= 4 ? "bad" : null;
 }
+function entryFoods(e) {
+  if (e.foods) return e.foods;
+  return (e.meal || "").split(/,|;|\n|\band\b|&|\+/i).map((s) => s.trim()).filter(Boolean);
+}
+
+function badFoods() {
+  const byKey = new Map();
+  for (const e of entries) {
+    const level = entryLevel(e);
+    if (!level) continue;
+    const t = new Date(e.time).getTime();
+    for (const name of entryFoods(e)) {
+      const k = foodKey(name);
+      if (!k || (foodCleared[k] && t <= foodCleared[k])) continue;
+      const f = byKey.get(k) || { key: k, name: prettyName(name), bad: 0, worst: 0, last: 0 };
+      f[level]++;
+      f.last = Math.max(f.last, t);
+      byKey.set(k, f);
+    }
+  }
+  return [...byKey.values()].map((f) => ({ ...f, level: f.worst ? "worst" : "bad", count: f.bad + f.worst }));
+}
+const isTrigger = (name) => badFoods().some((f) => f.key === foodKey(name));
+
+// Every food name the person has typed anywhere, used for suggestions and consistent spelling.
+function knownFoodNames() {
+  const names = new Map();
+  const add = (n) => { const k = foodKey(n); if (k && !names.has(k)) names.set(k, prettyName(n)); };
+  entries.forEach((e) => entryFoods(e).forEach(add));
+  meals.forEach((m) => m.foods.forEach(add));
+  return [...names.values()];
+}
+
+/* Forgiving search: exact and starts-with matches first, then near spellings ("garlik" → Garlic). */
+const normText = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return row[b.length];
+}
+function matchScore(query, name) {
+  const q = normText(query), n = normText(name);
+  if (!q) return 1;
+  if (n === q) return 100;
+  if (n.startsWith(q)) return 90;
+  const words = n.split(" ");
+  if (words.some((w) => w.startsWith(q))) return 80;
+  if (n.includes(q)) return 70;
+  let best = 0;
+  for (const qw of q.split(" ")) {
+    if (qw.length < 3) continue;
+    const allowed = qw.length <= 4 ? 1 : qw.length <= 7 ? 2 : 3;
+    for (const w of words) {
+      if (w[0] !== qw[0]) continue; // typos rarely hit the first letter; this stops "rice" matching "ice"
+      // Compare with the whole word and with its start (a letter shorter or longer, for a skipped or
+      // doubled letter), so half-typed words with a typo still match: "aple" → Apples.
+      const d = Math.min(
+        editDistance(qw, w),
+        ...[-1, 0, 1].map((k) => editDistance(qw, w.slice(0, qw.length + k)))
+      );
+      if (d <= allowed) best = Math.max(best, 60 - d * 10);
+    }
+  }
+  return best;
+}
+
+let foodFilter = "all";
+const fmtAgoDays = (t) => {
+  const d = Math.floor((Date.now() - t) / 86400000);
+  return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : new Date(t).toLocaleDateString([], { day: "numeric", month: "short" });
+};
+const worstFirst = (a, b) => (b.level === "worst") - (a.level === "worst") || b.count - a.count || b.last - a.last;
 
 function renderFoods() {
-  const q = $("#foodSearch").value.trim().toLowerCase();
-  const list = allFoods()
-    .filter(([name, lvl]) => {
-      const match = foodFilter === "all" || (foodFilter === "mine" ? isTrigger(name) : lvl === foodFilter);
-      return match && name.toLowerCase().includes(q);
-    })
-    .sort((a, b) => isTrigger(b[0]) - isTrigger(a[0]));
-  $("#foodList").innerHTML = list.length
-    ? list.map(([name, lvl, tip]) => {
-        const s = foodStats[foodKey(name)];
-        const trig = isTrigger(name);
-        const history = s && (s.hurt || s.good)
-          ? `<span class="food-tip">Your history: 😣 ${s.hurt || 0} painful · 😊 ${s.good || 0} fine</span>` : "";
-        return `
-        <li class="${trig ? "trigger" : ""}">
-          <div><span class="food-name">${escapeHtml(name)}</span>${tip ? `<span class="food-tip">${tip}</span>` : ""}${history}</div>
-          <div class="food-actions">
-            ${trig ? `<span class="badge mine">🚩 Hurt you ${s.hurt}×</span>` : ""}
-            ${lvl !== "mine" ? `<span class="badge ${lvl}">${badgeText[lvl]}</span>` : ""}
-            ${s && s.hurt ? `<button class="link-btn" data-reset="${escapeHtml(foodKey(name))}">Reset my history</button>` : ""}
-          </div>
-        </li>`;
-      }).join("")
-    : `<li><span class="muted">${foodFilter === "mine"
-        ? "No personal triggers yet. When a food hurts you more than once, it shows up here."
-        : "Not in the list yet. When in doubt, try a small portion and log how you feel."}</span></li>`;
+  const q = $("#foodSearch").value.trim();
+  let list = badFoods().filter((f) => foodFilter === "all" || f.level === foodFilter);
+  list = q
+    ? list.map((f) => ({ ...f, score: matchScore(q, f.name) })).filter((f) => f.score > 0).sort((a, b) => b.score - a.score || worstFirst(a, b))
+    : list.sort(worstFirst);
+
+  // Exact / starts-with / contains matches are real hits. Typo matches are only suggestions, so they
+  // never hide the "not on your list" answer.
+  const STRONG = 70;
+  const strong = q ? list.filter((f) => f.score >= STRONG) : list;
+  const similar = q ? list.filter((f) => f.score < STRONG) : [];
+
+  const item = (f) => `
+    <li class="${f.level}">
+      <div>
+        <span class="food-name">${escapeHtml(f.name)}</span>
+        <span class="food-tip">Logged ${f.count}× (${f.worst ? `😖 ${f.worst} worst` : ""}${f.worst && f.bad ? " · " : ""}${f.bad ? `😣 ${f.bad} bad` : ""}) · last ${fmtAgoDays(f.last)}</span>
+      </div>
+      <div class="food-actions">
+        <span class="badge ${f.level}">${levelInfo[f.level].emoji} ${levelInfo[f.level].label}</span>
+        <button class="link-btn" data-clear="${escapeHtml(f.key)}">Remove</button>
+      </div>
+    </li>`;
+
+  let html = strong.map(item).join("");
+  if (q && !strong.length && similar.length) {
+    // A near spelling of a bad food is most likely a typo for it, so the warning comes first.
+    html = `<li class="similar-head">Did you mean…?</li>` + similar.map(item).join("") +
+      `<li class="similar-head muted">If not, “${escapeHtml(q)}” isn't on your bad list.
+        <button class="link-btn" data-log-this="${escapeHtml(q)}">It upset me: log it</button></li>`;
+  } else if (q && !strong.length) {
+    html = `<li class="safe">✅ <b>${escapeHtml(q)}</b> isn't on your bad list. You haven't logged any trouble with it.
+      <br><button class="btn ghost small" data-log-this="${escapeHtml(q)}">It upset me: log it</button></li>`;
+  } else if (similar.length) {
+    html += `<li class="similar-head">Similar</li>` + similar.map(item).join("");
+  }
+  if (!html) {
+    html = `<li class="muted">${foodFilter === "all"
+      ? "Nothing here yet. When a food upsets your stomach, log it as Bad or Worst and it shows up here."
+      : `No ${levelInfo[foodFilter].label.toLowerCase()} foods logged.`}</li>`;
+  }
+  $("#foodList").innerHTML = html;
 }
-$("#foodList").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-reset]");
-  if (!btn) return;
-  const s = foodStats[btn.dataset.reset];
-  if (s) { s.hurt = 0; s.good = 0; }
-  store.set("foodStats", foodStats);
-  renderFoods();
-  toast("History cleared for " + (s?.name || "that food"));
+
+$("#foodList").addEventListener("click", async (e) => {
+  const clear = e.target.closest("[data-clear]");
+  if (clear) {
+    const f = badFoods().find((x) => x.key === clear.dataset.clear);
+    if (!(await askConfirm(`Remove ${f.name} from your bad foods? It comes back if you log it again.`, "Remove"))) return;
+    foodCleared[f.key] = Date.now();
+    store.set("foodCleared", foodCleared);
+    renderFoods();
+    return;
+  }
+  const logThis = e.target.closest("[data-log-this]");
+  if (logThis) {
+    go("log");
+    addLogFood(logThis.dataset.logThis);
+  }
 });
 $("#foodSearch").addEventListener("input", renderFoods);
 $$("[data-filter]").forEach((b) =>
@@ -335,42 +438,92 @@ $$("[data-filter]").forEach((b) =>
     renderFoods();
   })
 );
-renderFoods();
 
-/* ---------- Log ---------- */
-const symptoms = ["Bloating", "Cramps", "Gas", "Diarrhoea", "Constipation", "Nausea", "Urgency", "Fatigue"];
-let selectedSymptoms = new Set();
-let entries = store.get("entries", []);
+/* ---------- Log: type the food, tap Bad or Worst ---------- */
+let logFoods = [];
 
-function renderSymptomChips() {
-  $("#symptomChips").innerHTML = symptoms.map((s) =>
-    `<button type="button" class="chip ${selectedSymptoms.has(s) ? "active" : ""}" data-sym="${s}">${s}</button>`
-  ).join("");
+function canonicalName(name) {
+  const known = knownFoodNames().find((n) => foodKey(n) === foodKey(name));
+  return known || prettyName(name);
 }
-$("#symptomChips").addEventListener("click", (e) => {
-  const c = e.target.closest("[data-sym]");
-  if (!c) return;
-  const s = c.dataset.sym;
-  selectedSymptoms.has(s) ? selectedSymptoms.delete(s) : selectedSymptoms.add(s);
-  renderSymptomChips();
+function addLogFood(raw) {
+  raw.split(",").map((s) => s.trim()).filter(Boolean).forEach((n) => {
+    const name = canonicalName(n);
+    if (!logFoods.some((x) => foodKey(x) === foodKey(name))) logFoods.push(name);
+  });
+  $("#logFood").value = "";
+  renderLogForm();
+}
+function renderLogForm() {
+  $("#logChips").innerHTML = logFoods.map((n, i) =>
+    `<button type="button" class="chip active" data-rmlog="${i}">${escapeHtml(n)}<span class="x">×</span></button>`).join("");
+  // Suggestions from foods typed before, closest spelling first.
+  const q = $("#logFood").value.trim();
+  const picked = new Set(logFoods.map(foodKey));
+  const sugg = q
+    ? knownFoodNames().filter((n) => !picked.has(foodKey(n)))
+        .map((n) => ({ n, s: matchScore(q, n) })).filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s).slice(0, 5).map((x) => x.n)
+    : [];
+  $("#logSuggest").innerHTML = sugg.map((n) => `<button type="button" class="chip" data-sug="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join("");
+}
+$("#logFood").addEventListener("input", renderLogForm);
+$("#logFood").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); if (e.target.value.trim()) addLogFood(e.target.value); }
 });
-renderSymptomChips();
+$("#logAddBtn").addEventListener("click", () => $("#logFood").value.trim() && addLogFood($("#logFood").value));
+$("#logSuggest").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-sug]");
+  if (b) addLogFood(b.dataset.sug);
+});
+$("#logChips").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rmlog]");
+  if (!b) return;
+  logFoods.splice(Number(b.dataset.rmlog), 1);
+  renderLogForm();
+});
 
-$("#pain").addEventListener("input", (e) => ($("#painVal").textContent = e.target.value));
+function logBadFood(level, foodsList, source) {
+  entries.push({ id: Date.now(), time: new Date().toISOString(), level, foods: [...foodsList], ...(source ? { source } : {}) });
+  store.set("entries", entries);
+  // Logging a food again after removing it puts it back on the list.
+  let cleared = false;
+  foodsList.forEach((n) => { if (foodCleared[foodKey(n)]) { delete foodCleared[foodKey(n)]; cleared = true; } });
+  if (cleared) store.set("foodCleared", foodCleared);
+  renderEntries();
+  renderFoods();
+}
+
+$$(".level-btn").forEach((b) => b.addEventListener("click", () => {
+  if ($("#logFood").value.trim()) addLogFood($("#logFood").value);
+  if (!logFoods.length) {
+    toast("Type what you ate first");
+    $("#logFood").focus();
+    return;
+  }
+  const level = b.dataset.level;
+  logBadFood(level, logFoods);
+  toast(`${levelInfo[level].emoji} ${logFoods.join(", ")} added to your bad foods`);
+  logFoods = [];
+  renderLogForm();
+}));
 
 function renderEntries() {
-  $("#entries").innerHTML = entries.length
-    ? entries.slice().reverse().map((e) => `
-      <li>
-        <div>
-          <strong>${e.pain}/10</strong> ${e.symptoms.length ? "· " + e.symptoms.join(", ") : ""}
-          <div class="entry-meta">${new Date(e.time).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
-          · stress ${e.stress}${e.meal ? " · ate: " + escapeHtml(e.meal) : ""}</div>
-          ${e.notes ? `<div class="entry-meta">${escapeHtml(e.notes)}</div>` : ""}
-        </div>
-        <button class="del" data-id="${e.id}" aria-label="Delete entry">×</button>
-      </li>`).join("")
-    : `<li class="muted">No entries yet. Your first one is just a tap away.</li>`;
+  const shown = entries.slice().reverse();
+  $("#entries").innerHTML = shown.length
+    ? shown.map((e) => {
+        const level = entryLevel(e);
+        const foodsTxt = entryFoods(e).join(", ");
+        return `<li>
+          <div>
+            <span class="lvl">${level ? `${levelInfo[level].emoji} ${levelInfo[level].label}` : "🙂 Okay"}</span>
+            ${foodsTxt ? ` · ${escapeHtml(foodsTxt)}` : ""}
+            <div class="entry-meta">${new Date(e.time).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}${e.source === "meal" || e.notes === "From meal check-in" ? " · from meal check-in" : ""}</div>
+          </div>
+          <button class="del" data-id="${e.id}" aria-label="Delete entry">×</button>
+        </li>`;
+      }).join("")
+    : `<li class="muted">Nothing logged yet.</li>`;
   renderChart();
 }
 
@@ -381,75 +534,43 @@ function renderChart() {
     d.setDate(d.getDate() - i);
     days.push(d);
   }
-  $("#weekChart").innerHTML = days.map((d) => {
-    const key = dayKey(d);
-    const dayEntries = entries.filter((e) => dayKey(new Date(e.time)) === key);
-    const avg = dayEntries.length ? dayEntries.reduce((a, e) => a + e.pain, 0) / dayEntries.length : null;
-    const h = avg === null ? 4 : Math.max(6, (avg / 10) * 100);
-    return `<div class="bar-wrap" title="${avg === null ? "No entries" : "Avg " + avg.toFixed(1) + "/10"}">
-      <div class="bar ${avg === null ? "empty" : ""}" style="height:${h}%"></div>
+  const perDay = days.map((d) => entries.filter((e) => entryLevel(e) && dayKey(new Date(e.time)) === dayKey(d)));
+  const max = Math.max(3, ...perDay.map((l) => l.length));
+  $("#weekChart").innerHTML = days.map((d, i) => {
+    const list = perDay[i];
+    const worst = list.some((e) => entryLevel(e) === "worst");
+    return `<div class="bar-wrap" title="${list.length} bad food log${list.length === 1 ? "" : "s"}">
+      <div class="bar ${list.length ? (worst ? "worst" : "bad") : "empty"}" style="height:${list.length ? Math.max(8, (list.length / max) * 100) : 4}%"></div>
       <span class="bar-label">${d.toLocaleDateString([], { weekday: "short" })}</span>
     </div>`;
   }).join("");
-  $("#insight").textContent = buildInsight();
+  const top = badFoods().sort((a, b) => b.count - a.count)[0];
+  $("#insight").textContent = top && top.count > 1
+    ? `💡 ${top.name} is your most common trouble food (${top.count} times).`
+    : "Red bars are days with a Worst reaction.";
 }
 
-function buildInsight() {
-  if (entries.length < 3) return "Log a few more days and I'll point out patterns here.";
-  const avg = (arr) => arr.reduce((a, e) => a + e.pain, 0) / arr.length;
-  const high = entries.filter((e) => e.stress === "high");
-  const low = entries.filter((e) => e.stress === "low");
-  if (high.length >= 2 && low.length >= 2 && avg(high) - avg(low) >= 2) {
-    return "💡 Your discomfort tends to be higher on stressful days. Breathing breaks might really help you.";
-  }
-  const counts = {};
-  entries.forEach((e) => e.symptoms.forEach((s) => (counts[s] = (counts[s] || 0) + 1)));
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  return top ? `💡 Your most common symptom is ${top[0].toLowerCase()} (${top[1]} times). Worth mentioning to your doctor.` : "";
-}
-
-$("#logForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  entries.push({
-    id: Date.now(),
-    time: new Date().toISOString(),
-    pain: Number($("#pain").value),
-    symptoms: [...selectedSymptoms],
-    meal: $("#meal").value.trim(),
-    stress: $("#stress").value,
-    notes: $("#notes").value.trim(),
-  });
-  store.set("entries", entries);
-  selectedSymptoms.clear();
-  renderSymptomChips();
-  e.target.reset();
-  $("#painVal").textContent = "3";
-  renderEntries();
-  toast("Saved. Thanks for checking in with yourself 💚");
-});
-
-$("#entries").addEventListener("click", (e) => {
+$("#entries").addEventListener("click", async (e) => {
   const del = e.target.closest(".del");
-  if (!del) return;
+  if (!del || !(await askConfirm("Delete this log entry?", "Delete"))) return;
   entries = entries.filter((x) => String(x.id) !== del.dataset.id);
   store.set("entries", entries);
   renderEntries();
+  renderFoods();
 });
 
 $("#exportBtn").addEventListener("click", () => {
-  if (!entries.length) return toast("Nothing to export yet");
-  const rows = [["Date", "Discomfort", "Symptoms", "Food", "Stress", "Notes"]].concat(
-    entries.map((e) => [new Date(e.time).toLocaleString(), e.pain, e.symptoms.join("; "), e.meal, e.stress, e.notes])
-  );
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const rows = entries.filter((e) => entryLevel(e));
+  if (!rows.length) return toast("Nothing to export yet");
+  const csv = [["Date", "How bad", "Foods"]]
+    .concat(rows.map((e) => [new Date(e.time).toLocaleString(), levelInfo[entryLevel(e)].label, entryFoods(e).join("; ")]))
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = "gentle-gut-log.csv";
+  a.download = "gentle-gut-bad-foods.csv";
   a.click();
   URL.revokeObjectURL(a.href);
 });
-
-renderEntries();
 
 /* ---------- Meals & tummy check-ins ---------- */
 // Rough hours after eating when IBS symptoms from each food group tend to show up.
@@ -467,10 +588,6 @@ let mealFoods = [];
 function categoryOf(name) {
   const f = foods.find(([n]) => foodKey(n) === foodKey(name));
   return f ? f[3] : "custom";
-}
-function canonicalName(name) {
-  const f = allFoods().find(([n]) => foodKey(n) === foodKey(name));
-  return f ? f[0] : name.trim();
 }
 // The slowest food in the meal decides when we ask.
 function autoDelay(names) {
@@ -494,7 +611,7 @@ function localInputValue(d) {
 }
 
 function renderFoodNames() {
-  $("#foodNames").innerHTML = allFoods().map(([n]) => `<option value="${escapeHtml(n)}">`).join("");
+  $("#foodNames").innerHTML = knownFoodNames().map((n) => `<option value="${escapeHtml(n)}">`).join("");
 }
 
 function renderMealForm() {
@@ -572,7 +689,7 @@ function renderMeals() {
     : `<li class="muted">Nothing waiting. Log a meal and I'll check on you later.</li>`;
 
   const done = meals.filter((m) => m.answer).sort((a, b) => b.eatenAt - a.eatenAt).slice(0, 10);
-  const face = { good: "😊", off: "😕", hurt: "😣" };
+  const face = { good: "😊", off: "😣", hurt: "😖" };
   $("#recentMeals").innerHTML = done.length
     ? done.map((m) => `<li>
         <div><strong>${m.foods.map(escapeHtml).join(", ")}</strong>
@@ -592,42 +709,18 @@ $("#pendingMeals").addEventListener("click", (e) => {
 });
 $("#dueBanner").addEventListener("click", () => dueMeals()[0] && openCheckin(dueMeals()[0]));
 
-/* Check-in dialog */
+/* Check-in dialog: one tap. Bad and Worst add the meal's foods to the bad-foods list. */
 const dialog = $("#checkinDialog");
 let activeMeal = null;
-let checkinAnswer = null;
-let checkinSyms = new Set();
 
 function openCheckin(meal) {
   if (!meal || dialog.open) return;
   activeMeal = meal;
-  checkinAnswer = null;
-  checkinSyms = new Set();
   $("#checkinTitle").textContent = `How's your tummy after ${mealLabel(meal.eatenAt)}?`;
   $("#checkinFoods").textContent = `You had ${meal.foods.join(", ")} at ${fmtTime(meal.eatenAt)}.`;
-  $$(".answer").forEach((b) => b.classList.remove("active"));
-  $("#checkinSymptomsBox").hidden = true;
-  renderCheckinSyms();
   dialog.showModal();
 }
-function renderCheckinSyms() {
-  $("#checkinSymptoms").innerHTML = symptoms.map((s) =>
-    `<button type="button" class="chip ${checkinSyms.has(s) ? "active" : ""}" data-csym="${s}">${s}</button>`
-  ).join("");
-}
-$("#checkinSymptoms").addEventListener("click", (e) => {
-  const c = e.target.closest("[data-csym]");
-  if (!c) return;
-  checkinSyms.has(c.dataset.csym) ? checkinSyms.delete(c.dataset.csym) : checkinSyms.add(c.dataset.csym);
-  renderCheckinSyms();
-});
-$$(".answer").forEach((b) => b.addEventListener("click", () => {
-  checkinAnswer = b.dataset.answer;
-  $$(".answer").forEach((x) => x.classList.toggle("active", x === b));
-  if (checkinAnswer === "good") return saveCheckin();
-  $("#checkinSymptomsBox").hidden = false; // ask what they feel before saving
-}));
-$("#checkinSave").addEventListener("click", saveCheckin);
+$$(".answer").forEach((b) => b.addEventListener("click", () => saveCheckin(b.dataset.answer)));
 function snoozeActive() {
   activeMeal.snoozeUntil = Date.now() + SNOOZE_MS;
   store.set("meals", meals);
@@ -640,52 +733,17 @@ $("#checkinLater").addEventListener("click", () => {
 });
 dialog.addEventListener("cancel", snoozeActive); // Esc = snooze, so the question isn't lost
 
-function saveCheckin() {
+function saveCheckin(answer) {
   const meal = activeMeal;
-  meal.answer = checkinAnswer;
-  meal.symptoms = [...checkinSyms];
+  meal.answer = answer;
   meal.answeredAt = Date.now();
-
-  // Update each food's history; foods that hurt twice or more become personal triggers.
-  const newlyFlagged = [];
-  meal.foods.forEach((name) => {
-    const k = foodKey(name);
-    const s = (foodStats[k] ||= { name, hurt: 0, good: 0 });
-    const was = isTrigger(name);
-    if (checkinAnswer === "hurt") s.hurt++;
-    if (checkinAnswer === "good") s.good++;
-    if (!was && isTrigger(name)) newlyFlagged.push(name);
-  });
-  store.set("foodStats", foodStats);
   store.set("meals", meals);
-
-  // Discomfort also goes into the symptom log so it appears in the weekly chart.
-  if (checkinAnswer !== "good") {
-    entries.push({
-      id: Date.now(),
-      time: new Date().toISOString(),
-      pain: checkinAnswer === "hurt" ? 7 : 4,
-      symptoms: meal.symptoms,
-      meal: meal.foods.join(", "),
-      stress: "mid",
-      notes: "From meal check-in",
-    });
-    store.set("entries", entries);
-    renderEntries();
-  }
-
+  const level = { off: "bad", hurt: "worst" }[answer];
+  if (level) logBadFood(level, meal.foods, "meal");
   dialog.close();
   renderMeals();
-  renderFoods();
   renderFoodNames();
-
-  if (newlyFlagged.length) {
-    toast(`🚩 ${newlyFlagged.join(", ")} added to your triggers`);
-  } else if (checkinAnswer === "hurt") {
-    toast("Sorry it hurts 💚 The Flare tab has steps that can help.");
-  } else {
-    toast(checkinAnswer === "good" ? "Great to hear! 😊" : "Noted. Be gentle with yourself 💚");
-  }
+  toast(level ? `${levelInfo[level].emoji} ${meal.foods.join(", ")} added to your bad foods` : "Great to hear! 😊");
   setTimeout(checkDue, 2500); // next waiting check-in, if any
 }
 
@@ -713,6 +771,9 @@ document.addEventListener("visibilitychange", () => !document.hidden && checkDue
 $("#mealTime").value = localInputValue(new Date());
 renderFoodNames();
 renderMeals();
+renderEntries();
+renderFoods();
+renderLogForm();
 setTimeout(checkDue, 800);
 
 /* ---------- Installable app (PWA) ---------- */
