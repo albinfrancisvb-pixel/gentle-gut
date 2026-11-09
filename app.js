@@ -45,6 +45,9 @@ function askConfirm(text, okLabel = "OK") {
   });
 }
 
+// Set once every screen's code has loaded; early renders skip parts that depend on later sections.
+var appReady = false;
+
 /* ---------- Theme ---------- */
 const themeBtn = $("#themeToggle");
 function applyTheme(theme) {
@@ -61,13 +64,27 @@ themeBtn.addEventListener("click", () => {
 });
 
 /* ---------- Navigation ---------- */
-function go(view) {
+// Screens that aren't bottom tabs light up their parent tab and get a Back button.
+const parentTab = { meal: "home", sos: "home", breathe: "home", log: "food" };
+let currentView = "home";
+let previousViews = [];
+
+function go(view, { back = false } = {}) {
+  if (view === currentView) return window.scrollTo({ top: 0, behavior: "smooth" });
+  if (!back) previousViews = (parentTab[view] ? previousViews.concat(currentView) : []).slice(-10);
+  currentView = view;
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
-  $$(".bottom-nav button").forEach((b) => b.classList.toggle("active", b.dataset.go === view));
+  const tab = parentTab[view] || view;
+  $$(".bottom-nav button").forEach((b) => b.classList.toggle("active", b.dataset.go === tab));
   if (view !== "breathe") stopBreathing();
+  if (view === "home" && appReady) renderToday();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
+function goBack() {
+  go(previousViews.pop() || parentTab[currentView] || "home", { back: true });
+}
 $$("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+$$("[data-back]").forEach((b) => b.addEventListener("click", goBack));
 
 /* ---------- Home ---------- */
 const affirmations = [
@@ -390,6 +407,7 @@ function renderFoods() {
       </div>
       <div class="food-actions">
         <span class="badge ${f.level}">${levelInfo[f.level].emoji} ${levelInfo[f.level].label}</span>
+        <button class="link-btn" data-retry="${escapeHtml(f.name)}">🥄 Try again slowly</button>
         <button class="link-btn" data-clear="${escapeHtml(f.key)}">Remove</button>
       </div>
     </li>`;
@@ -698,16 +716,12 @@ function renderMeals() {
       </li>`).join("")
     : `<li class="muted">Answered check-ins show up here.</li>`;
 
-  const due = dueMeals().length;
-  const banner = $("#dueBanner");
-  banner.hidden = !due;
-  banner.textContent = `🔔 ${due} tummy check-in${due > 1 ? "s" : ""} waiting. Tap to answer.`;
+  if (appReady) renderToday(); // a waiting check-in shows on Home's Today card
 }
 $("#pendingMeals").addEventListener("click", (e) => {
   const b = e.target.closest("[data-answer-meal]");
   if (b) openCheckin(meals.find((m) => String(m.id) === b.dataset.answerMeal));
 });
-$("#dueBanner").addEventListener("click", () => dueMeals()[0] && openCheckin(dueMeals()[0]));
 
 /* Check-in dialog: one tap. Bad and Worst add the meal's foods to the bad-foods list. */
 const dialog = $("#checkinDialog");
@@ -835,7 +849,7 @@ window.addEventListener("appinstalled", () => {
 // Home-screen shortcuts open straight to a tab (e.g. ./#meal).
 function openFromHash() {
   const view = location.hash.slice(1);
-  if (["home", "meal", "journal", "jar", "sos", "breathe", "food", "log"].includes(view)) go(view);
+  if (["home", "meal", "journal", "jar", "brave", "sos", "breathe", "food", "log"].includes(view)) go(view);
 }
 openFromHash();
 window.addEventListener("hashchange", openFromHash);
@@ -1411,14 +1425,14 @@ $("#cookiePhotoInput").addEventListener("change", async (e) => {
 
 async function openCookieForm(cookie = null) {
   cForm = { id: cookie?.id ?? null, rating: cookie?.rating ?? null, photos: [], removed: [] };
-  $("#cookieDialogTitle").textContent = cookie ? "Edit cookie 🍪" : "Add a cookie 🍪";
+  $("#cookieDialogTitle").textContent = cookie?.id ? "Edit cookie 🍪" : "Add a cookie 🍪";
   $("#cookieTitle").value = cookie?.title ?? "";
   $("#cookieStory").value = cookie?.story ?? "";
   $("#cookieDate").value = cookie?.date ?? todayKey();
   renderRating();
   renderFormPhotos();
   cookieDialog.showModal();
-  if (cookie) {
+  if (cookie?.photoIds?.length) {
     for (const id of cookie.photoIds) cForm.photos.push({ id, url: await photoUrl(id), isNew: false });
     renderFormPhotos();
   }
@@ -1600,3 +1614,518 @@ boostDialog.addEventListener("touchend", (e) => {
 $("#boostBtn").addEventListener("click", () => openBoost());
 
 renderJar();
+
+/* ---------- Brave steps: facing fears little by little ---------- */
+// Graded exposure, as used in CBT for IBS: pick something you avoid, break it into small steps,
+// repeat each step until it feels okay, then move up.
+const ladderTemplates = [
+  { key: "eatout", icon: "🍽️", title: "Eating out", steps: [
+    "Buy a takeaway drink and have it outside",
+    "Sit in a café for 15 minutes with a drink",
+    "Eat a small snack at a café",
+    "Eat a meal at a quiet restaurant at a quiet time",
+    "Eat out with a friend you trust",
+    "Eat at a busy restaurant",
+  ] },
+  { key: "travel", icon: "🚌", title: "Travel & journeys", steps: [
+    "Take a 10-minute trip by bus, train or car",
+    "Take a 30-minute journey you know well",
+    "Go on a journey without checking where the toilets are first",
+    "Take a 1-hour journey",
+    "Go on a day trip somewhere new",
+  ] },
+  { key: "toilet", icon: "🚻", title: "Being away from a toilet", steps: [
+    "Go for a 10-minute walk away from home",
+    "Spend 20 minutes in a shop or park",
+    "Watch a whole film at a cinema or a friend's place",
+    "Spend an hour somewhere you don't know where the toilet is",
+    "Spend a whole morning out",
+  ] },
+  { key: "social", icon: "👥", title: "Social plans", steps: [
+    "Message a friend to say hi",
+    "Meet a friend for a short walk",
+    "Have a coffee or tea with a friend",
+    "Say yes to an invitation you'd usually turn down",
+    "Go to a gathering or party for an hour",
+    "Tell a trusted friend about your IBS",
+  ] },
+  { key: "work", icon: "💼", title: "Work or college", steps: [
+    "Sit through a whole class or meeting",
+    "Eat lunch with classmates or coworkers",
+    "Speak up once in a class or meeting",
+    "Go in without your usual backup plan",
+    "Go on a work or study trip",
+  ] },
+];
+const foodChallengeSteps = [
+  "A tiny taste (about 1 teaspoon)",
+  "A small portion (about a quarter of a normal serving)",
+  "Half a normal serving",
+  "A normal serving",
+];
+const CHALLENGE_GAP_DAYS = 2;
+
+let ladders = store.get("brave", []);
+let openLadderId = null;
+let editingLadder = false;
+const braveDialog = $("#braveDialog");
+const newId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
+
+const nextStep = (l) => l.steps.find((st) => !st.done);
+const stepsDone = (l) => l.steps.filter((st) => st.done).length;
+const findLadder = (id) => ladders.find((l) => String(l.id) === String(id));
+
+function saveLadders() {
+  store.set("brave", ladders);
+  renderBrave();
+  renderToday();
+}
+
+function makeLadder({ key = null, icon, title, kind = "situation", food = null, steps }) {
+  const l = { id: newId(), key, icon, title, kind, food, created: Date.now(),
+    steps: steps.map((text) => ({ id: newId(), text, done: false, tries: [] })) };
+  ladders.push(l);
+  saveLadders();
+  openLadder(l.id);
+  toast("Ladder ready. Start with the first step 🧗");
+}
+
+/* List of ladders + templates */
+function renderBrave() {
+  $("#braveHome").hidden = !!openLadderId;
+  $("#braveDetail").hidden = !openLadderId;
+  if (openLadderId) return renderLadderDetail();
+
+  const sorted = ladders.slice().sort((a, b) => !!a.finished - !!b.finished || b.created - a.created);
+  $("#ladderList").innerHTML = sorted.length
+    ? `<h2 class="section-title">My ladders</h2>` + sorted.map((l) => {
+        const done = stepsDone(l), total = l.steps.length, next = nextStep(l);
+        return `<button class="card ladder-card" data-open-ladder="${l.id}">
+          <span class="ladder-icon">${l.icon}</span>
+          <span class="ladder-info">
+            <b>${escapeHtml(l.title)}</b>
+            <span class="progress"><span style="width:${total ? (done / total) * 100 : 0}%"></span></span>
+            <small>${next ? `Next: ${escapeHtml(next.text)}` : "🏆 Completed!"}</small>
+          </span>
+          <span class="ladder-count">${done}/${total}</span>
+        </button>`;
+      }).join("")
+    : "";
+
+  $("#templateGrid").innerHTML = ladderTemplates.map((t) =>
+    `<button class="template" data-template="${t.key}"><span>${t.icon}</span>${t.title}</button>`).join("") +
+    `<button class="template" data-new-food><span>🥄</span>Try a bad food again</button>
+     <button class="template" data-new-custom><span>✏️</span>My own fear</button>`;
+}
+
+$("#ladderList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-open-ladder]");
+  if (b) openLadder(b.dataset.openLadder);
+});
+$("#templateGrid").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-template]");
+  if (t) {
+    const tpl = ladderTemplates.find((x) => x.key === t.dataset.template);
+    const existing = ladders.find((l) => l.key === tpl.key && !l.finished);
+    if (existing) return openLadder(existing.id);
+    return makeLadder({ key: tpl.key, icon: tpl.icon, title: tpl.title, steps: tpl.steps });
+  }
+  if (e.target.closest("[data-new-food]")) return openFoodChallenge();
+  if (e.target.closest("[data-new-custom]")) return openCustomLadder();
+});
+
+function openLadder(id) {
+  openLadderId = String(id);
+  editingLadder = false;
+  if (currentView !== "brave") go("brave");
+  renderBrave();
+  window.scrollTo({ top: 0 });
+}
+
+/* One ladder */
+function renderLadderDetail() {
+  const l = findLadder(openLadderId);
+  if (!l) { openLadderId = null; return renderBrave(); }
+  const next = nextStep(l);
+  const isFood = l.kind === "food";
+  const lastTry = (st) => st.tries[st.tries.length - 1];
+  const waitUntil = (() => {
+    if (!isFood || !next) return 0;
+    const prevDone = l.steps.filter((st) => st.done).map(lastTry).filter(Boolean).pop();
+    return prevDone ? prevDone.time + CHALLENGE_GAP_DAYS * 86400000 : 0;
+  })();
+
+  $("#braveDetail").innerHTML = `
+    <button class="back-btn" data-ladders>‹ All ladders</button>
+    <h1>${l.icon} ${escapeHtml(l.title)}</h1>
+    <p class="muted">${stepsDone(l)} of ${l.steps.length} steps done${l.finished ? " · 🏆 completed" : ""}</p>
+    ${isFood ? `<div class="card warn small-card">⚠️ Only for foods that upset your stomach. <b>Never</b> do this with a food you're allergic to. Leave ${CHALLENGE_GAP_DAYS}–3 days between steps, and stop if you feel unwell.</div>` : ""}
+    <ol class="ladder-steps">
+      ${l.steps.map((st, i) => {
+        const state = st.done ? "done" : st === next ? "current" : "later";
+        const tries = st.tries.length;
+        return `<li class="${state}">
+          <span class="rung">${st.done ? "✓" : i + 1}</span>
+          <div class="rung-body">
+            <span class="rung-text">${escapeHtml(st.text)}</span>
+            ${tries ? `<small class="muted">Tried ${tries}×</small>` : ""}
+            ${state === "current" ? `
+              ${waitUntil > Date.now() ? `<small class="wait-note">Give your gut a rest: next try from ${new Date(waitUntil).toLocaleDateString([], { weekday: "long" })}.</small>` : ""}
+              <div class="rung-actions">
+                ${isFood ? "" : `<button class="btn ghost small" data-ready="${st.id}">💪 Get ready</button>`}
+                <button class="btn primary small" data-tried="${st.id}">✓ I tried it</button>
+              </div>` : ""}
+            ${state === "done" && !isFood ? `<button class="link-btn" data-tried="${st.id}">Practise again</button>` : ""}
+            ${editingLadder ? `<div class="rung-edit">
+              <button class="link-btn" data-move="${st.id}" data-dir="-1" aria-label="Move up">↑</button>
+              <button class="link-btn" data-move="${st.id}" data-dir="1" aria-label="Move down">↓</button>
+              <button class="link-btn" data-del-step="${st.id}">Delete</button></div>` : ""}
+          </div>
+        </li>`;
+      }).join("")}
+    </ol>
+    ${!next ? `<div class="card soft center">🏆 <b>You climbed the whole ladder!</b><br>That took real courage.
+       <br><button class="btn ghost small" data-cookie-ladder>🍪 Add to cookie jar</button></div>` : ""}
+    ${editingLadder ? `
+      <form class="add-row" id="addStepForm">
+        <input type="text" id="newStepText" placeholder="Add a step" maxlength="140">
+        <button class="btn ghost" type="submit">Add</button>
+      </form>
+      <button class="btn ghost danger-btn" data-del-ladder>Delete this ladder</button>` : ""}
+    ${isFood ? "" : `<button class="link-btn edit-toggle" data-edit-ladder>${editingLadder ? "Done editing" : "✏️ Edit steps"}</button>`}`;
+}
+
+$("#braveDetail").addEventListener("click", async (e) => {
+  const l = findLadder(openLadderId);
+  const t = e.target.closest("button");
+  if (!t || !l) return;
+  const step = (id) => l.steps.find((st) => String(st.id) === id);
+  if (t.matches("[data-ladders]")) { openLadderId = null; return renderBrave(); }
+  if (t.dataset.ready) return showReady(l, step(t.dataset.ready));
+  if (t.dataset.tried) return openTry(l, step(t.dataset.tried));
+  if (t.matches("[data-edit-ladder]")) { editingLadder = !editingLadder; return renderLadderDetail(); }
+  if (t.dataset.move) {
+    const i = l.steps.findIndex((st) => String(st.id) === t.dataset.move);
+    const j = i + Number(t.dataset.dir);
+    if (j < 0 || j >= l.steps.length) return;
+    [l.steps[i], l.steps[j]] = [l.steps[j], l.steps[i]];
+    return saveLadders();
+  }
+  if (t.dataset.delStep) {
+    if (l.steps.length <= 1) return toast("A ladder needs at least one step");
+    l.steps = l.steps.filter((st) => String(st.id) !== t.dataset.delStep);
+    return saveLadders();
+  }
+  if (t.matches("[data-del-ladder]")) {
+    if (!(await askConfirm(`Delete the “${l.title}” ladder?`, "Delete"))) return;
+    ladders = ladders.filter((x) => x !== l);
+    openLadderId = null;
+    return saveLadders();
+  }
+  if (t.matches("[data-cookie-ladder]")) {
+    return openCookieForm({ title: `Climbed my “${l.title}” ladder`, story: l.steps.map((st) => "✓ " + st.text).join("\n"), photoIds: [] });
+  }
+});
+$("#braveDetail").addEventListener("submit", (e) => {
+  if (e.target.id !== "addStepForm") return;
+  e.preventDefault();
+  const text = $("#newStepText").value.trim();
+  if (!text) return;
+  const l = findLadder(openLadderId);
+  l.steps.push({ id: newId(), text, done: false, tries: [] });
+  l.finished = null;
+  saveLadders();
+});
+
+/* Dialog helpers */
+function showBraveDialog(html) {
+  $("#braveDialogBody").innerHTML = html;
+  if (!braveDialog.open) braveDialog.showModal();
+}
+$("#braveDialogClose").addEventListener("click", () => braveDialog.close());
+
+function showReady(l, st) {
+  showBraveDialog(`
+    <h2 id="braveDialogTitle">You've got this 💪</h2>
+    <p class="muted">${escapeHtml(st.text)}</p>
+    <ul class="ready-tips">
+      <li>😟 <b>Feeling nervous is normal.</b> Worry rises, peaks, and then drops if you stay with it.</li>
+      <li>🫧 <b>Breathe slowly</b> into your belly before and during.</li>
+      <li>🎒 <b>Plan small comforts:</b> water, any medicine your doctor suggested, and the Flare-up steps on your phone.</li>
+      <li>⏳ <b>Stay until the worry drops a little</b>, rather than leaving at its peak.</li>
+      <li>✓ <b>Afterwards, come back</b> and tap “I tried it”, even if it was hard.</li>
+    </ul>
+    <div class="dialog-actions">
+      <button class="btn ghost" data-dialog-go="breathe">🫧 Breathe first</button>
+      <button class="btn primary" data-dialog-close>I'm ready</button>
+    </div>`);
+}
+$("#braveDialogBody").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.dialogGo) { braveDialog.close(); go(b.dataset.dialogGo); }
+  if (b.matches("[data-dialog-close]")) braveDialog.close();
+});
+
+/* Recording a try */
+const tryQuestions = {
+  situation: [
+    { key: "before", q: "Before you started, how scary did it feel?", opts: [["calm", "😌", "Okay"], ["nervous", "😟", "Nervous"], ["scared", "😨", "Scared"]] },
+    { key: "result", q: "How did it go?", opts: [["easier", "🙂", "Easier than I feared"], ["expected", "😐", "As I expected"], ["harder", "😣", "Harder than I feared"]] },
+    { key: "feared", q: "Did what you feared actually happen?", opts: [["no", "🙌", "No"], ["little", "🤏", "A little"], ["yes", "😔", "Yes"]] },
+  ],
+  food: [
+    { key: "stomach", q: "How was your stomach afterwards?", opts: [["fine", "😊", "Fine"], ["bad", "😣", "Bad"], ["worst", "😖", "Worst"]] },
+  ],
+};
+let tryState = null;
+
+function openTry(l, st) {
+  tryState = { l, st, answers: {} };
+  renderTry();
+}
+function renderTry() {
+  const { l, st, answers } = tryState;
+  const qs = tryQuestions[l.kind === "food" ? "food" : "situation"];
+  const complete = qs.every((q) => answers[q.key]);
+  showBraveDialog(`
+    <h2 id="braveDialogTitle">Well done for trying 🌟</h2>
+    <p class="muted">${escapeHtml(l.kind === "food" ? `${st.text} of ${l.food}` : st.text)}</p>
+    ${qs.map((q) => `
+      <p class="field-label">${q.q}</p>
+      <div class="answer-row try-row">
+        ${q.opts.map(([v, emo, label]) => `<button class="answer ${answers[q.key] === v ? "active" : ""}" data-q="${q.key}" data-v="${v}"><span>${emo}</span>${label}</button>`).join("")}
+      </div>`).join("")}
+    <button class="btn primary top-gap" id="trySave" ${complete ? "" : "disabled"}>Save</button>`);
+}
+$("#braveDialogBody").addEventListener("click", (e) => {
+  const opt = e.target.closest("[data-q]");
+  if (opt && tryState) {
+    tryState.answers[opt.dataset.q] = opt.dataset.v;
+    return renderTry();
+  }
+  if (e.target.closest("#trySave") && tryState) saveTry();
+  const up = e.target.closest("[data-move-up]");
+  if (up) moveUp();
+  const ck = e.target.closest("[data-cookie-step]");
+  if (ck) {
+    const { l, st, answers } = tryState;
+    braveDialog.close();
+    openCookieForm({ title: `Brave step: ${st.text}`, story: braveStory(l, answers), photoIds: [] });
+  }
+  const rm = e.target.closest("[data-unlist]");
+  if (rm) {
+    foodCleared[foodKey(rm.dataset.unlist)] = Date.now();
+    store.set("foodCleared", foodCleared);
+    renderFoods();
+    braveDialog.close();
+    toast(`${rm.dataset.unlist} is off your bad-foods list 🎉`);
+  }
+});
+
+function braveStory(l, a) {
+  if (l.kind === "food") return `Tried ${l.food} again and my stomach felt ${a.stomach}.`;
+  const words = { calm: "okay", nervous: "nervous", scared: "scared", easier: "easier than I feared", expected: "about as I expected", harder: "harder than I feared" };
+  return `I felt ${words[a.before]} before. It went ${words[a.result]}.${a.feared === "no" ? " What I feared didn't happen." : ""}`;
+}
+
+function saveTry() {
+  const { l, st, answers } = tryState;
+  st.tries.push({ time: Date.now(), ...answers });
+  const isFood = l.kind === "food";
+  let html;
+
+  if (isFood) {
+    const ok = answers.stomach === "fine";
+    if (!ok) logBadFood(answers.stomach, [l.food], "challenge");
+    if (ok) st.done = true;
+    const finished = ok && !nextStep(l);
+    if (finished) l.finished = Date.now();
+    html = ok
+      ? finished
+        ? `<h2>🎉 You can eat ${escapeHtml(l.food)} again!</h2>
+           <p>Your gut handled a normal serving. That's a big win.</p>
+           <div class="dialog-actions"><button class="btn primary" data-unlist="${escapeHtml(l.food)}">Remove it from my bad foods</button></div>
+           <button class="btn ghost small top-gap" data-cookie-step>🍪 Add to cookie jar</button>`
+        : `<h2>Your gut handled it 🎉</h2>
+           <p>Wait ${CHALLENGE_GAP_DAYS}–3 days, then try the next amount: <b>${escapeHtml(nextStep(l).text.toLowerCase())}</b>.</p>
+           <button class="btn ghost small top-gap" data-cookie-step>🍪 Add to cookie jar</button>`
+      : `<h2>Thanks for trying 💚</h2>
+         <p>Your gut isn't ready for this amount yet, and that's useful to know. Stick with the amount before this one, and try again in a few weeks.</p>
+         <div class="dialog-actions"><button class="btn primary" data-dialog-close>Okay</button></div>`;
+  } else {
+    const praise = {
+      no: "What you feared didn't happen. 🎉 Your brain just learned this is safer than it thought.",
+      little: "Some of it happened, and you coped. That's real proof you can handle it.",
+      yes: "It was hard, and you still did it. That takes courage, and each try makes the next one easier.",
+    }[answers.feared];
+    const readyToMove = answers.result !== "harder" && answers.before !== "scared";
+    const isLast = st === l.steps[l.steps.length - 1];
+    const already = st.done;
+    html = `<h2>${answers.feared === "no" ? "You did it! 🎉" : "You showed up 💪"}</h2>
+      <p>${praise}</p>
+      ${already ? "" : readyToMove
+        ? `<p><b>${isLast ? "Ready to call this ladder done?" : "Ready for the next step?"}</b></p>
+           <div class="dialog-actions">
+             <button class="btn ghost" data-dialog-close>Practise once more</button>
+             <button class="btn primary" data-move-up>${isLast ? "🏆 Finish ladder" : "⬆ Move up"}</button>
+           </div>`
+        : `<p>Try this step again a few more times, until it feels more okay. That's how fear shrinks.</p>
+           <div class="dialog-actions">
+             <button class="btn primary" data-dialog-close>I'll practise again</button>
+             <button class="btn ghost" data-move-up>Move up anyway</button>
+           </div>`}
+      <button class="btn ghost small top-gap" data-cookie-step>🍪 Add to cookie jar</button>`;
+  }
+  saveLadders();
+  showBraveDialog(html);
+}
+
+function moveUp() {
+  const { l, st } = tryState;
+  st.done = true;
+  if (!nextStep(l)) l.finished = Date.now();
+  saveLadders();
+  braveDialog.close();
+  toast(l.finished ? "🏆 You climbed the whole ladder!" : "⬆ Next step unlocked");
+}
+
+/* New ladders: food re-challenge and your own fear */
+function openFoodChallenge(preselect = null) {
+  const list = badFoods();
+  if (!list.length) return toast("Your bad-foods list is empty. Log a food first.");
+  let chosen = (preselect && list.find((f) => f.key === foodKey(preselect)))?.name || null;
+  const render = () => showBraveDialog(`
+    <h2 id="braveDialogTitle">Try a bad food again 🥄</h2>
+    <p class="muted">Sometimes a gut that reacted once can handle a food later, especially in small amounts. Go slowly: from a teaspoon up to a normal serving, a few days apart.</p>
+    <p class="field-label">Which food?</p>
+    <div class="chips">${list.map((f) => `<button class="chip ${chosen === f.name ? "active" : ""}" data-pick-food="${escapeHtml(f.name)}">${f.level === "worst" ? "😖" : "😣"} ${escapeHtml(f.name)}</button>`).join("")}</div>
+    <label class="allergy-check top-gap"><input type="checkbox" id="notAllergy">
+      <span>I'm <b>not allergic</b> to this food. It doesn't give me hives, swelling, or trouble breathing.</span></label>
+    <p class="muted small">If you're unsure, check with your doctor or dietitian first.</p>
+    <button class="btn primary top-gap" id="startChallenge">Start</button>`);
+  render();
+  const body = $("#braveDialogBody");
+  body.onclick = (e) => {
+    const pick = e.target.closest("[data-pick-food]");
+    if (pick) { chosen = pick.dataset.pickFood; const ok = $("#notAllergy").checked; render(); $("#notAllergy").checked = ok; }
+    if (e.target.closest("#startChallenge")) {
+      if (!chosen) return toast("Pick a food first");
+      if (!$("#notAllergy").checked) return toast("Please confirm it isn't an allergy");
+      body.onclick = null;
+      braveDialog.close();
+      makeLadder({ icon: "🥄", title: `Try ${chosen} again`, kind: "food", food: chosen, steps: foodChallengeSteps });
+    }
+  };
+  braveDialog.addEventListener("close", () => (body.onclick = null), { once: true });
+}
+
+function openCustomLadder() {
+  showBraveDialog(`
+    <h2 id="braveDialogTitle">My own fear ✏️</h2>
+    <form id="customLadderForm">
+      <label class="field"><span>What do you avoid because of IBS?</span>
+        <input type="text" id="customTitle" required maxlength="80" placeholder="e.g. Going to the gym"></label>
+      <label class="field"><span>Steps, from easiest to hardest (one per line)</span>
+        <textarea id="customSteps" rows="5" placeholder="Walk past the gym&#10;Go in and look around&#10;Do a 10-minute workout&#10;Do a full workout"></textarea></label>
+      <button class="btn primary" type="submit">Create ladder</button>
+    </form>`);
+}
+$("#braveDialogBody").addEventListener("submit", (e) => {
+  if (e.target.id !== "customLadderForm") return;
+  e.preventDefault();
+  const title = $("#customTitle").value.trim();
+  const steps = $("#customSteps").value.split("\n").map((x) => x.trim()).filter(Boolean);
+  if (steps.length < 2) return toast("Add at least two steps, one per line");
+  braveDialog.close();
+  makeLadder({ icon: "✏️", title, steps });
+});
+
+/* ---------- Home: the one next thing to do ---------- */
+function renderToday() {
+  const card = $("#todayCard");
+  const due = dueMeals()[0];
+  const active = ladders.filter((l) => !l.finished && nextStep(l)).sort((a, b) => b.created - a.created)[0];
+  let html;
+  if (due) {
+    html = `<span class="today-label">🔔 Waiting for you</span>
+      <b>How's your tummy after ${escapeHtml(due.foods.join(", "))}?</b>
+      <button class="btn primary small" data-today="checkin">Answer now</button>`;
+  } else if (active) {
+    html = `<span class="today-label">🧗 Your next brave step</span>
+      <b>${escapeHtml(nextStep(active).text)}</b>
+      <small class="muted">${active.icon} ${escapeHtml(active.title)} · step ${stepsDone(active) + 1} of ${active.steps.length}</small>
+      <button class="btn primary small" data-today="ladder" data-id="${active.id}">Open</button>`;
+  } else if (!badFoods().length) {
+    html = `<span class="today-label">👋 Start here</span>
+      <b>Log a food that upsets your stomach, so you always know what to avoid.</b>
+      <button class="btn primary small" data-today="log">Log a bad food</button>`;
+  } else if (!ladders.length) {
+    html = `<span class="today-label">🧗 Win something back</span>
+      <b>Pick one thing IBS made you avoid, and take a tiny first step.</b>
+      <button class="btn primary small" data-today="brave">Try Brave steps</button>`;
+  } else {
+    html = `<span class="today-label">🌟 Nice work</span>
+      <b>You've finished your ladders. Start a new one, or add a win to your cookie jar.</b>
+      <button class="btn primary small" data-today="brave">New ladder</button>`;
+  }
+  card.innerHTML = html;
+}
+$("#todayCard").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-today]");
+  if (!b) return;
+  const what = b.dataset.today;
+  if (what === "checkin") return openCheckin(dueMeals()[0]);
+  if (what === "ladder") return openLadder(b.dataset.id);
+  go(what);
+});
+
+// Food tab shortcut: "Try again slowly" on a bad food starts a re-challenge for it.
+$("#foodList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-retry]");
+  if (!b) return;
+  go("brave");
+  openFoodChallenge(b.dataset.retry);
+});
+
+/* ---------- First-time welcome tour ---------- */
+const welcomeSlides = [
+  ["🌿", "Welcome to Gentle Gut", "A calm companion for living with IBS. Here's how it helps, in 30 seconds."],
+  ["🥕", "Know your bad foods", "When something upsets your stomach, log it with one tap. Before you eat, search to check whether it's on your list."],
+  ["🧗", "Win back your life, step by step", "Pick something IBS made you avoid, like eating out or travel, and face it in small, safe steps."],
+  ["💚", "Calm on hard days", "Flare-up help, breathing, a journal to talk things out, and a cookie jar full of your wins. Everything stays on your phone unless you choose to sign in."],
+];
+let welcomeIndex = 0;
+const welcomeDialog = $("#welcomeDialog");
+function renderWelcome() {
+  const [icon, title, text] = welcomeSlides[welcomeIndex];
+  $("#welcomeSlide").innerHTML = `<div class="welcome-icon">${icon}</div><h2 id="welcomeTitle">${title}</h2><p>${text}</p>`;
+  $("#welcomeDots").innerHTML = welcomeSlides.map((_, i) => `<i class="${i === welcomeIndex ? "on" : ""}"></i>`).join("");
+  const last = welcomeIndex === welcomeSlides.length - 1;
+  $("#welcomeNext").textContent = last ? "Let's start" : "Next";
+  $("#welcomeSkip").hidden = last;
+}
+function closeWelcome() {
+  store.set("welcomed", true);
+  welcomeDialog.close();
+}
+$("#welcomeNext").addEventListener("click", () => {
+  if (welcomeIndex === welcomeSlides.length - 1) return closeWelcome();
+  welcomeIndex++;
+  renderWelcome();
+});
+$("#welcomeSkip").addEventListener("click", closeWelcome);
+welcomeDialog.addEventListener("cancel", () => store.set("welcomed", true));
+
+// Tapping the Brave tab always lands on the list of ladders.
+$('.bottom-nav [data-go="brave"]').addEventListener("click", () => {
+  if (openLadderId) { openLadderId = null; renderBrave(); }
+});
+
+renderBrave();
+appReady = true;
+renderToday();
+if (!store.get("welcomed", false)) {
+  renderWelcome();
+  setTimeout(() => !document.querySelector("dialog[open]") && welcomeDialog.showModal(), 400);
+}

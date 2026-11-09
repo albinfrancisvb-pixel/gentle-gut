@@ -513,3 +513,78 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 .entries .lvl { font-weight: 800; }
 .food-list .similar-head { background: none; border: none; padding: 8px 2px 2px; color: var(--muted); font-weight: 700; font-size: .85rem; }
 .badge { white-space: nowrap; }
+
+/* Navigation: Back button on non-tab screens */
+.back-btn { border: none; background: none; color: var(--primary); font-weight: 800; padding: 4px 0; margin-bottom: 8px; font-size: 1rem; }
+
+/* Home: Today card and quick actions */
+.today { display: flex; flex-direction: column; gap: 6px; background: var(--primary-soft); border-color: transparent; }
+.today .today-label { font-size: .8rem; font-weight: 800; color: var(--primary); text-transform: uppercase; letter-spacing: .04em; }
+.today b { font-size: 1.05rem; line-height: 1.35; }
+.today .btn { width: auto; align-self: flex-start; margin-top: 4px; }
+.tile-meal-sq { background: var(--primary-soft); }
+
+/* Brave steps */
+.section-title { margin: 20px 0 10px; }
+.how { background: var(--surface); }
+.how-steps { margin: 6px 0 0; padding-left: 20px; }
+.how-steps li { margin-bottom: 6px; }
+.ladder-card { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; }
+.ladder-icon { font-size: 1.8rem; flex: none; }
+.ladder-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ladder-info small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ladder-count { flex: none; font-weight: 800; color: var(--primary); }
+.progress { display: block; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--primary); border-radius: 999px; transition: width .3s ease; }
+.template-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.template {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px;
+  border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); font-weight: 700; text-align: left;
+}
+.template span { font-size: 1.6rem; }
+
+.ladder-steps { list-style: none; padding: 0; margin: 16px 0; position: relative; }
+.ladder-steps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 3px; background: var(--border); border-radius: 3px; }
+.ladder-steps li { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; position: relative; }
+.rung {
+  flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
+  background: var(--surface); border: 3px solid var(--border); color: var(--muted); z-index: 1;
+}
+.rung-body { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.rung-text { font-weight: 700; }
+.ladder-steps li.done .rung { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.ladder-steps li.done .rung-text { color: var(--muted); }
+.ladder-steps li.current .rung { border-color: var(--primary); color: var(--primary); }
+.ladder-steps li.current .rung-body { border: 2px solid var(--primary); box-shadow: var(--shadow); }
+.ladder-steps li.later { opacity: .6; }
+.rung-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.rung-actions .btn { width: auto; }
+.rung-edit { display: flex; gap: 14px; }
+.wait-note { color: var(--mod); font-weight: 700; }
+.small-card { font-size: .92rem; }
+.edit-toggle { display: block; margin: 4px auto 16px; }
+.danger-btn { color: var(--high); width: 100%; margin: 10px 0; }
+#addStepForm { margin-bottom: 8px; }
+#addStepForm input { flex: 1; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+
+.brave-dialog { position: relative; max-height: calc(100vh - 32px); overflow-y: auto; }
+.brave-dialog h2 { padding-right: 28px; }
+.try-row .answer { font-size: .78rem; line-height: 1.25; text-align: center; }
+.ready-tips { list-style: none; padding: 0; margin: 12px 0 16px; }
+.ready-tips li { margin-bottom: 10px; line-height: 1.4; }
+.allergy-check { display: flex; gap: 10px; align-items: flex-start; font-size: .92rem; }
+.allergy-check input { width: 22px; height: 22px; flex: none; accent-color: var(--primary); margin-top: 1px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* Welcome tour */
+.welcome { text-align: center; }
+.welcome-icon { font-size: 3.2rem; margin: 6px 0 4px; }
+.welcome p { color: var(--muted); line-height: 1.5; min-height: 4.5em; }
+.welcome-dots { display: flex; justify-content: center; gap: 6px; margin: 4px 0 12px; }
+.welcome-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.welcome-dots i.on { background: var(--primary); width: 20px; border-radius: 999px; }
+.welcome .dialog-actions { justify-content: center; }
+.welcome #welcomeSkip[hidden] { display: none; }
+
+/* Five tabs get a little more room */
+.bottom-nav button { font-size: .75rem; }

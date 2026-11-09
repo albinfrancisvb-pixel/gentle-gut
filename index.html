@@ -41,6 +41,8 @@
         <p class="affirmation" id="affirmation"></p>
       </div>
 
+      <div class="card today" id="todayCard"></div>
+
       <div class="card">
         <h2>Daily check-in</h2>
         <p class="muted">Tap what fits. There's no wrong answer.</p>
@@ -54,8 +56,6 @@
         <p class="checkin-reply" id="checkinReply" aria-live="polite"></p>
       </div>
 
-      <button class="card due-banner" id="dueBanner" hidden></button>
-
       <div class="card signin-banner" id="signinBanner" hidden>
         <span>☁️ <b>Use Gentle Gut on all your devices.</b> Sign in to back up your data and sync it everywhere.</span>
         <div class="banner-actions">
@@ -64,41 +64,26 @@
         </div>
       </div>
 
-      <button class="tile tile-meal" data-go="meal">
-        <span class="tile-icon">🍽️</span>
-        <span><strong>Log what I ate</strong><small>I'll check on your tummy afterwards</small></span>
-      </button>
-
-      <button class="tile tile-meal tile-journal" data-go="journal">
-        <span class="tile-icon">💭</span>
-        <span><strong>Talk it out</strong><small>A gentle chat to untangle stress and heavy thoughts</small></span>
-      </button>
-
-      <button class="tile tile-meal tile-jar" data-go="jar">
-        <span class="tile-icon">🍪</span>
-        <span><strong>Cookie jar</strong><small>Your wins, saved for the hard days</small></span>
-      </button>
-
       <div class="grid-2">
         <button class="tile tile-sos" data-go="sos">
           <span class="tile-icon">🆘</span>
           <strong>Flare-up help</strong>
           <small>Step-by-step comfort, right now</small>
         </button>
-        <button class="tile tile-breathe" data-go="breathe">
-          <span class="tile-icon">🫧</span>
-          <strong>Breathe</strong>
-          <small>Calm the gut–brain loop</small>
-        </button>
-        <button class="tile tile-food" data-go="food">
-          <span class="tile-icon">🥕</span>
-          <strong>My bad foods</strong>
-          <small>Search what to avoid</small>
+        <button class="tile tile-meal-sq" data-go="meal">
+          <span class="tile-icon">🍽️</span>
+          <strong>Log a meal</strong>
+          <small>I'll check on your tummy later</small>
         </button>
         <button class="tile tile-log" data-go="log">
           <span class="tile-icon">📓</span>
           <strong>Log a bad food</strong>
           <small>One tap: bad or worst</small>
+        </button>
+        <button class="tile tile-breathe" data-go="breathe">
+          <span class="tile-icon">🫧</span>
+          <strong>Breathe</strong>
+          <small>Calm the gut–brain loop</small>
         </button>
       </div>
 
@@ -113,6 +98,7 @@
 
     <!-- MEAL -->
     <section class="view" id="view-meal" aria-labelledby="h-meal">
+      <button class="back-btn" data-back>‹ Back</button>
       <h1 id="h-meal">Log a meal</h1>
       <p class="muted">Add what you ate. Once it's had time to digest, I'll ask how your stomach feels.</p>
 
@@ -230,8 +216,33 @@
       <ul class="cookie-list" id="cookieList"></ul>
     </section>
 
+    <!-- BRAVE: face fears little by little -->
+    <section class="view" id="view-brave" aria-labelledby="h-brave">
+      <div id="braveHome">
+        <h1 id="h-brave">Brave steps 🧗</h1>
+        <p class="muted">IBS can make us avoid things we used to enjoy. Facing them in small, safe steps teaches your brain that it's okay again.</p>
+
+        <div class="card how">
+          <h2>How it works</h2>
+          <ol class="how-steps">
+            <li><b>Pick</b> one thing IBS made you avoid.</li>
+            <li><b>Start with the easiest step.</b> Feeling nervous is normal, and it passes.</li>
+            <li><b>Repeat it</b> until it feels okay, then move up a step.</li>
+          </ol>
+        </div>
+
+        <div id="ladderList"></div>
+
+        <h2 class="section-title">Start a new ladder</h2>
+        <div class="template-grid" id="templateGrid"></div>
+      </div>
+
+      <div id="braveDetail" hidden></div>
+    </section>
+
     <!-- SOS -->
     <section class="view" id="view-sos" aria-labelledby="h-sos">
+      <button class="back-btn" data-back>‹ Back</button>
       <h1 id="h-sos">You're going to be okay 💚</h1>
       <p class="muted">Flares pass. Take these one at a time, at your own pace.</p>
       <ol class="steps" id="sosSteps"></ol>
@@ -243,6 +254,7 @@
 
     <!-- BREATHE -->
     <section class="view" id="view-breathe" aria-labelledby="h-breathe">
+      <button class="back-btn" data-back>‹ Back</button>
       <h1 id="h-breathe">Belly breathing</h1>
       <p class="muted">Slow breaths tell your nervous system it's safe, which can ease cramping.</p>
       <div class="pattern-picker" role="tablist">
@@ -276,6 +288,7 @@
 
     <!-- LOG: one-tap bad / worst food logging -->
     <section class="view" id="view-log" aria-labelledby="h-log">
+      <button class="back-btn" data-back>‹ Back</button>
       <h1 id="h-log">Log a bad food</h1>
       <p class="muted">Something upset your stomach? Type it and tap how bad it was. That's it.</p>
 
@@ -314,12 +327,10 @@
 
   <nav class="bottom-nav" aria-label="Main">
     <button data-go="home" class="active"><span>🏠</span>Home</button>
-    <button data-go="meal"><span>🍽️</span>Meals</button>
-    <button data-go="sos"><span>🆘</span>Flare</button>
+    <button data-go="food"><span>🥕</span>Foods</button>
+    <button data-go="brave"><span>🧗</span>Brave</button>
     <button data-go="journal"><span>💭</span>Journal</button>
     <button data-go="jar"><span>🍪</span>Jar</button>
-    <button data-go="food"><span>🥕</span>Food</button>
-    <button data-go="log"><span>📓</span>Log</button>
   </nav>
 
   <p class="disclaimer">Gentle Gut offers comfort and tracking, not medical advice. Please work with a doctor or dietitian on your IBS care.</p>
@@ -440,6 +451,20 @@
       </div>
       <p class="muted small">Your meals, logs, journal and cookie jar sync automatically whenever you're online. Only you can see them.</p>
       <button class="btn ghost" id="signOutBtn">Sign out</button>
+    </div>
+  </dialog>
+
+  <dialog class="checkin brave-dialog" id="braveDialog" aria-labelledby="braveDialogTitle">
+    <button class="dialog-x" id="braveDialogClose" aria-label="Close">✕</button>
+    <div id="braveDialogBody"></div>
+  </dialog>
+
+  <dialog class="checkin welcome" id="welcomeDialog" aria-labelledby="welcomeTitle">
+    <div id="welcomeSlide"></div>
+    <div class="welcome-dots" id="welcomeDots"></div>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="welcomeSkip">Skip</button>
+      <button class="btn primary" id="welcomeNext">Next</button>
     </div>
   </dialog>
 

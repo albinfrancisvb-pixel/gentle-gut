@@ -5,7 +5,7 @@
 /* ---------- Merge core (pure, no browser APIs; unit-tested in Node) ---------- */
 const SyncCore = (() => {
   // "list" collections are arrays of {id, ...}; "map" collections are plain objects keyed by date or name.
-  const COLLECTIONS = { moods: "map", water: "map", foodStats: "map", foodCleared: "map", meals: "list", entries: "list", journal: "list", cookies: "list" };
+  const COLLECTIONS = { moods: "map", water: "map", foodStats: "map", foodCleared: "map", brave: "list", meals: "list", entries: "list", journal: "list", cookies: "list" };
 
   const toMap = (kind, v) =>
     kind === "list" ? Object.fromEntries((v || []).map((x) => [String(x.id), x])) : { ...(v || {}) };
